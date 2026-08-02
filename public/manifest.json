@@ -1,18 +1,87 @@
 {
-  "short_name": "PraveshKavach",
+  "id": "/",
   "name": "PraveshKavach™ Enterprise Visitor Management System",
-  "description": "Enterprise Visitor Management System with OCR, Face Verification & Gate Control",
-  "icons": [
-    {
-      "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
-    }
-  ],
+  "short_name": "PraveshKavach",
+  "description": "Enterprise Security & Visitor Management System with OCR, Biometric Face Verification, Gate Approvals & Instant Telegram Pass Generation",
   "start_url": "/",
-  "background_color": "#020617",
-  "theme_color": "#020617",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "scope": "/"
+  "theme_color": "#020617",
+  "background_color": "#020617",
+  "lang": "en-US",
+  "dir": "ltr",
+  "categories": [
+    "business",
+    "productivity",
+    "utilities",
+    "security"
+  ],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/maskable-icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/screenshot-desktop.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "PraveshKavach Security Guard Dashboard"
+    },
+    {
+      "src": "/screenshots/screenshot-mobile.png",
+      "sizes": "540x960",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "PraveshKavach Mobile Visitor Verification"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Register New Visitor",
+      "short_name": "New Visitor",
+      "description": "Start quick document OCR scan & face verification",
+      "url": "/?shortcut=scan",
+      "icons": [
+        {
+          "src": "/icons/icon-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  }
 }

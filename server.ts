@@ -1987,6 +1987,20 @@ app.post('/api/visitors/approve', (req, res) => {
   }
 });
 
+// Explicit PWA route headers for PWABuilder & Service Worker compliance
+app.get('/sw.js', (req, res, next) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Service-Worker-Allowed', '/');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  next();
+});
+
+app.get('/manifest.json', (req, res, next) => {
+  res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  next();
+});
+
 // Explicit Catch-All 404 Handler for ALL /api/* routes
 // Prevents unmatched API requests from hitting SPA HTML fallback
 app.all('/api/*', (req, res) => {
