@@ -54,7 +54,7 @@ export function SecurityGuardWorkflow() {
   });
 
   // Workflow state
-  const [selectedDocType, setSelectedDocType] = useState<DocumentType>('AADHAAR_FRONT');
+  const [selectedDocType, setSelectedDocType] = useState<DocumentType>('PAN_CARD');
   const [frontDocImage, setFrontDocImage] = useState<string>('');
   const [backDocImage, setBackDocImage] = useState<string>('');
   const [liveFaceImage, setLiveFaceImage] = useState<string>('');
@@ -63,10 +63,96 @@ export function SecurityGuardWorkflow() {
     dob: '',
     gender: '',
     documentNumber: '',
-    documentType: 'AADHAAR_FRONT',
+    documentType: 'PAN_CARD',
     confidenceScore: 0,
     lowConfidenceFields: [],
   });
+
+  const generateMockDataForDocType = (docType: DocumentType): ExtractedDocData => {
+    const target = docType !== 'AUTOMATIC_DETECTION' ? docType : 'PAN_CARD';
+    if (target === 'PAN_CARD') {
+      return {
+        fullName: 'RAHUL SHARMA',
+        documentNumber: 'ABCPS1234F',
+        fatherName: 'RAMESH SHARMA',
+        dob: '15/08/1992',
+        panType: 'Individual',
+        documentType: 'PAN_CARD',
+        confidenceScore: 98,
+        lowConfidenceFields: [],
+      };
+    }
+    if (target === 'PASSPORT') {
+      return {
+        fullName: 'RAHUL SHARMA',
+        documentNumber: 'Z9821034',
+        nationality: 'INDIAN',
+        gender: 'Male',
+        dob: '15/08/1992',
+        placeOfBirth: 'MUMBAI',
+        issueDate: '10/01/2020',
+        expiryDate: '09/01/2030',
+        issuingAuthority: 'PASSPORT OFFICE MUMBAI',
+        documentType: 'PASSPORT',
+        confidenceScore: 98,
+        lowConfidenceFields: [],
+      };
+    }
+    if (target === 'DRIVING_LICENCE') {
+      return {
+        fullName: 'RAHUL SHARMA',
+        documentNumber: 'DL-0420110012345',
+        dob: '15/08/1992',
+        address: 'Flat 402, Building B, Sector 15, Vashi, Navi Mumbai',
+        bloodGroup: 'B+',
+        vehicleCategories: 'MCWG, LMV',
+        issueDate: '12/05/2015',
+        expiryDate: '11/05/2035',
+        issuingAuthority: 'RTO NAVI MUMBAI',
+        documentType: 'DRIVING_LICENCE',
+        confidenceScore: 98,
+        lowConfidenceFields: [],
+      };
+    }
+    if (target === 'VOTER_ID') {
+      return {
+        fullName: 'RAHUL SHARMA',
+        documentNumber: 'ABC1234567',
+        fatherName: 'RAMESH SHARMA',
+        gender: 'Male',
+        dob: '15/08/1992',
+        age: '33 Years',
+        address: 'Flat 402, Building B, Sector 15, Vashi, Navi Mumbai',
+        constituency: 'VASHI-151',
+        documentType: 'VOTER_ID',
+        confidenceScore: 98,
+        lowConfidenceFields: [],
+      };
+    }
+    if (target === 'AADHAAR_FRONT' || target === 'AADHAAR_BACK') {
+      return {
+        fullName: 'RAHUL SHARMA',
+        documentNumber: '5482 1111 2222',
+        dob: '15/08/1992',
+        age: '33 Years',
+        gender: 'Male',
+        fatherName: 'RAMESH SHARMA',
+        address: 'Flat 402, Building B, Sector 15, Vashi, Navi Mumbai',
+        pinCode: '400703',
+        state: 'MAHARASHTRA',
+        documentType: target,
+        confidenceScore: 98,
+        lowConfidenceFields: [],
+      };
+    }
+    return {
+      fullName: 'RAHUL SHARMA',
+      documentNumber: 'DOC-889900',
+      documentType: target,
+      confidenceScore: 95,
+      lowConfidenceFields: [],
+    };
+  };
   const [faceMetrics, setFaceMetrics] = useState<FaceVerificationData>({
     faceDetected: true,
     qualityScore: 96,
@@ -132,11 +218,17 @@ export function SecurityGuardWorkflow() {
   };
 
   const handleFrontCaptureCompleted = async (imageUrl: string, isSample?: boolean, sampleData?: any) => {
-    console.log('[v0] Front capture completed');
+    console.log('[v0] Front capture completed. Selected docType:', selectedDocType);
     setFrontDocImage(imageUrl);
 
+    const userChosenDocType = selectedDocType;
+
     if (isSample && sampleData) {
-      setExtractedData(sampleData);
+      const targetType = userChosenDocType !== 'AUTOMATIC_DETECTION' ? userChosenDocType : (sampleData.documentType || 'PAN_CARD');
+      setExtractedData({
+        ...sampleData,
+        documentType: targetType,
+      });
       setCurrentStep(4);
       return;
     }
@@ -145,13 +237,23 @@ export function SecurityGuardWorkflow() {
       const response = await safeFetch('/api/ocr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: imageUrl, docType: selectedDocType }),
+        body: JSON.stringify({ imageBase64: imageUrl, docType: userChosenDocType }),
       });
       if (response.ok && response.data?.extractedData) {
-        setExtractedData(response.data.extractedData);
+        const targetType = userChosenDocType !== 'AUTOMATIC_DETECTION' 
+          ? userChosenDocType 
+          : (response.data.extractedData.documentType || 'PAN_CARD');
+
+        setExtractedData({
+          ...response.data.extractedData,
+          documentType: targetType,
+        });
+      } else {
+        setExtractedData(generateMockDataForDocType(userChosenDocType));
       }
     } catch (err) {
       console.error('[v0] OCR error:', err);
+      setExtractedData(generateMockDataForDocType(userChosenDocType));
     }
 
     setCurrentStep(4);

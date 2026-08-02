@@ -72,8 +72,8 @@ export interface FieldWithConfidence {
 
 export interface ExtractedDocData {
   fullName: string;
-  dob: string;
-  gender: string;
+  dob?: string;
+  gender?: string;
   fatherName?: string;
   address?: string;
   pinCode?: string;

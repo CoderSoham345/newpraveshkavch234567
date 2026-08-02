@@ -1141,7 +1141,7 @@ app.post('/api/ocr', async (req, res) => {
   console.log('[v0] ===== OCR.Space Pipeline START =====');
   
   try {
-    const { imageBase64, side } = req.body;
+    const { imageBase64, side, docType } = req.body;
     
     if (!imageBase64) {
       return res.status(400).json({ success: false, error: 'imageBase64 field is required' });
@@ -1209,29 +1209,29 @@ app.post('/api/ocr', async (req, res) => {
       throw new Error(`OCR.Space error: ${ocrData.errorMessage || ocrData.ErrorMessage}`);
     }
 
-    // Step 3: Auto-detect document type using detectDocumentType keyword score matching
+    // Step 3: Classification & Single Source of Truth Enforcement
     console.log('[v0] Running detectDocumentType on raw OCR text...');
     const classification = classifyDocumentFromOCR(rawOCRText, side);
-    
-    // MANDATORY PRINT OF DETECTION REPORT BEFORE PARSING
-    console.log('[v0] ===== DOCUMENT DETECTION REPORT =====');
-    console.log('[v0] Detected Document Type:', classification.documentType);
-    console.log('[v0] Reason:', classification.reason);
-    console.log('[v0] Matched Keywords:', classification.indicators?.join(', '));
-    console.log('[v0] Detection Confidence:', classification.confidence);
 
-    // Step 4: Extract structured fields based on detected document type
-    console.log('[v0] Extracting document fields for:', classification.documentType);
-    const extractedData = extractDocumentFields(rawOCRText, classification.documentType);
+    // Single Source of Truth: User's requested docType takes absolute precedence unless set to AUTOMATIC_DETECTION
+    const targetDocType = (docType && docType !== 'AUTOMATIC_DETECTION')
+      ? docType
+      : classification.documentType;
+
+    console.log('[v0] Requested DocType:', docType, '| Detected:', classification.documentType, '| Target Single Source of Truth:', targetDocType);
+
+    // Step 4: Extract structured fields strictly for targetDocType
+    const extractedData = extractDocumentFields(rawOCRText, targetDocType);
+    extractedData.documentType = targetDocType;
     
     // Step 5: Calculate confidence and validation status
-    const confidenceScore = calculateOverallConfidence(extractedData, classification.documentType);
-    const validationStatus = validateExtractedData(extractedData, classification.documentType);
+    const confidenceScore = calculateOverallConfidence(extractedData, targetDocType);
+    const validationStatus = validateExtractedData(extractedData, targetDocType);
 
     // Step 6: Enterprise logging
     const totalTime = Date.now() - startTime;
     logOCRMetrics({
-      documentType: classification.documentType,
+      documentType: targetDocType,
       confidence: confidenceScore,
       totalTime,
       preprocessingTime,
@@ -1245,7 +1245,7 @@ app.post('/api/ocr', async (req, res) => {
     const response = {
       success: true,
       documentClassification: {
-        documentType: classification.documentType,
+        documentType: targetDocType,
         confidence: classification.confidence,
         side: classification.side,
         reason: classification.reason,
@@ -1253,6 +1253,7 @@ app.post('/api/ocr', async (req, res) => {
       },
       extractedData: {
         ...extractedData,
+        documentType: targetDocType,
         confidenceScore,
       },
       validation: {

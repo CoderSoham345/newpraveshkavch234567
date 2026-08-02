@@ -190,13 +190,34 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
                 <span className="text-emerald-400">Exact OCR Input</span>
               </div>
               <pre className="whitespace-pre-wrap break-words leading-relaxed">
-{`GOVERNMENT OF INDIA
-UNIQUE IDENTIFICATION AUTHORITY OF INDIA
+{validatedData.documentType === 'PAN_CARD' ? `INCOME TAX DEPARTMENT
+GOVT OF INDIA
+PERMANENT ACCOUNT NUMBER CARD
+NAME: ${validatedData.fullName || 'Not Detected'}
+FATHER'S NAME: ${validatedData.fatherName || 'Not Detected'}
+DOB: ${validatedData.dob || 'Not Detected'}
+PAN NO: ${validatedData.documentNumber || 'Not Detected'}`
+: validatedData.documentType === 'PASSPORT' ? `REPUBLIC OF INDIA
+PASSPORT
+NAME: ${validatedData.fullName || 'Not Detected'}
+NATIONALITY: ${validatedData.nationality || 'INDIAN'}
+PASSPORT NO: ${validatedData.documentNumber || 'Not Detected'}
+DOB: ${validatedData.dob || 'Not Detected'}
+EXPIRY DATE: ${validatedData.expiryDate || 'Not Detected'}`
+: validatedData.documentType === 'DRIVING_LICENCE' ? `UNION OF INDIA - DRIVING LICENCE
+LICENCE NO: ${validatedData.documentNumber || 'Not Detected'}
 NAME: ${validatedData.fullName || 'Not Detected'}
 DOB: ${validatedData.dob || 'Not Detected'}
-GENDER: ${validatedData.gender || 'Male'}
+VALID TILL: ${validatedData.expiryDate || 'Not Detected'}`
+: validatedData.documentType === 'VOTER_ID' ? `ELECTION COMMISSION OF INDIA
+ELECTORAL PHOTO IDENTITY CARD
+EPIC NO: ${validatedData.documentNumber || 'Not Detected'}
+NAME: ${validatedData.fullName || 'Not Detected'}
+GENDER: ${validatedData.gender || 'Not Detected'}`
+: `DOCUMENT TYPE: ${validatedData.documentType}
+NAME: ${validatedData.fullName || 'Not Detected'}
 DOCUMENT NO: ${validatedData.documentNumber || 'Not Detected'}
-ADDRESS: ${validatedData.address || 'Scanned on Back Document'}`}
+DOB: ${validatedData.dob || 'Not Detected'}`}
               </pre>
             </div>
           )}

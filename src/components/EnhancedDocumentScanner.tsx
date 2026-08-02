@@ -45,46 +45,43 @@ export function EnhancedDocumentScanner({ onDocumentScanned, documentType = 'AUT
   ];
 
   const mockOCRResponse = (selectedType: DocumentType): ScannedDocument => {
-    const mockText = `UNIQUE IDENTIFICATION AUTHORITY OF INDIA
-AADHAAR
-735653806992
-Name: SOHAM SANDIP GONBHARE
-Gender: Male
-DOB: 15/07/2006
-Address: XYZ Road, Mumbai 400706
-State: Maharashtra
-PIN: 400706`;
-
     const detectedType = selectedType === 'AUTOMATIC_DETECTION' 
-      ? DocumentDetector.detectDocumentType(mockText)
+      ? 'PAN_CARD'
       : selectedType;
 
     const fields: Record<string, { value: string; confidence: number; status: string }> = {};
     
-    // Mock extraction based on document type
-    if (detectedType === 'AADHAAR_FRONT') {
-      const validations = {
-        documentNumber: DocumentValidator.validateAadhaarNumber('735653806992'),
-        name: DocumentValidator.validateName('SOHAM SANDIP GONBHARE'),
-        gender: { value: 'Male', confidence: 100, isValid: true },
-        dob: DocumentValidator.validateDateOfBirth('15/07/2006'),
-        age: { value: '18', confidence: 95, isValid: true },
-      };
-
-      Object.entries(validations).forEach(([key, val]: any) => {
-        fields[key] = {
-          value: val.value,
-          confidence: val.confidence,
-          status: val.validationStatus,
-        };
-      });
+    if (detectedType === 'PAN_CARD') {
+      fields.documentNumber = { value: 'ABCPS1234F', confidence: 99, status: 'VERIFIED' };
+      fields.fullName = { value: 'RAHUL SHARMA', confidence: 98, status: 'VERIFIED' };
+      fields.fatherName = { value: 'RAMESH SHARMA', confidence: 95, status: 'VERIFIED' };
+      fields.dob = { value: '15/08/1992', confidence: 98, status: 'VERIFIED' };
+    } else if (detectedType === 'PASSPORT') {
+      fields.documentNumber = { value: 'Z9821034', confidence: 99, status: 'VERIFIED' };
+      fields.fullName = { value: 'RAHUL SHARMA', confidence: 98, status: 'VERIFIED' };
+      fields.nationality = { value: 'INDIAN', confidence: 100, status: 'VERIFIED' };
+      fields.dob = { value: '15/08/1992', confidence: 98, status: 'VERIFIED' };
+      fields.expiryDate = { value: '09/01/2030', confidence: 98, status: 'VERIFIED' };
+    } else if (detectedType === 'DRIVING_LICENCE') {
+      fields.documentNumber = { value: 'DL-0420110012345', confidence: 99, status: 'VERIFIED' };
+      fields.fullName = { value: 'RAHUL SHARMA', confidence: 98, status: 'VERIFIED' };
+      fields.dob = { value: '15/08/1992', confidence: 98, status: 'VERIFIED' };
+      fields.expiryDate = { value: '11/05/2035', confidence: 98, status: 'VERIFIED' };
+    } else if (detectedType === 'VOTER_ID') {
+      fields.documentNumber = { value: 'ABC1234567', confidence: 99, status: 'VERIFIED' };
+      fields.fullName = { value: 'RAHUL SHARMA', confidence: 98, status: 'VERIFIED' };
+      fields.gender = { value: 'Male', confidence: 95, status: 'VERIFIED' };
+    } else {
+      fields.documentNumber = { value: '5482 1111 2222', confidence: 98, status: 'VERIFIED' };
+      fields.fullName = { value: 'RAHUL SHARMA', confidence: 98, status: 'VERIFIED' };
+      fields.dob = { value: '15/08/1992', confidence: 98, status: 'VERIFIED' };
     }
 
     return {
       type: detectedType,
       confidence: 95,
       fields,
-      rawOCRText: mockText,
+      rawOCRText: `MOCK OCR TEXT STREAM FOR ${detectedType}`,
     };
   };
 

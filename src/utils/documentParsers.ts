@@ -295,7 +295,7 @@ export const DOCUMENT_SCHEMAS: Record<string, DocTypeSchema> = {
  */
 export function getDocumentSchema(docType?: string): DocTypeSchema {
   if (!docType) {
-    return DOCUMENT_SCHEMAS['AADHAAR_FRONT'];
+    return DOCUMENT_SCHEMAS['PAN_CARD'];
   }
 
   if (DOCUMENT_SCHEMAS[docType]) {
@@ -303,14 +303,14 @@ export function getDocumentSchema(docType?: string): DocTypeSchema {
   }
 
   const upper = docType.toUpperCase().replace(/[\s\-_]+/g, '_');
-  if (upper.includes('AADHAAR') || upper.includes('UIDAI')) {
-    if (upper.includes('BACK')) return DOCUMENT_SCHEMAS['AADHAAR_BACK'];
-    return DOCUMENT_SCHEMAS['AADHAAR_FRONT'];
-  }
   if (upper.includes('PAN')) return DOCUMENT_SCHEMAS['PAN_CARD'];
   if (upper.includes('PASSPORT')) return DOCUMENT_SCHEMAS['PASSPORT'];
   if (upper.includes('DRIVING') || upper.includes('LICENCE') || upper.includes('LICENSE')) return DOCUMENT_SCHEMAS['DRIVING_LICENCE'];
   if (upper.includes('VOTER') || upper.includes('EPIC')) return DOCUMENT_SCHEMAS['VOTER_ID'];
+  if (upper.includes('AADHAAR') || upper.includes('UIDAI')) {
+    if (upper.includes('BACK')) return DOCUMENT_SCHEMAS['AADHAAR_BACK'];
+    return DOCUMENT_SCHEMAS['AADHAAR_FRONT'];
+  }
   if (upper.includes('STUDENT')) return DOCUMENT_SCHEMAS['STUDENT_ID'];
   if (upper.includes('EMPLOYEE')) {
     if (upper.includes('GOVT') || upper.includes('GOVERNMENT')) return DOCUMENT_SCHEMAS['GOVT_EMPLOYEE_ID'];
@@ -318,7 +318,7 @@ export function getDocumentSchema(docType?: string): DocTypeSchema {
   }
   if (upper.includes('RC') || upper.includes('VEHICLE')) return DOCUMENT_SCHEMAS['RC_BOOK'];
 
-  return DOCUMENT_SCHEMAS['OTHER_IDENTITY_DOC'] || DOCUMENT_SCHEMAS['AADHAAR_FRONT'];
+  return DOCUMENT_SCHEMAS['OTHER_IDENTITY_DOC'] || DOCUMENT_SCHEMAS['PAN_CARD'];
 }
 
 /**
@@ -327,11 +327,11 @@ export function getDocumentSchema(docType?: string): DocTypeSchema {
 export function classifyDocumentType(ocrText: string): DocumentType {
   const upper = ocrText.toUpperCase();
 
-  if (upper.includes('GOVERNMENT OF INDIA') || upper.includes('AADHAAR') || upper.includes('UIDAI') || /\d{4}\s\d{4}\s\d{4}/.test(upper)) {
-    return 'AADHAAR_FRONT';
-  }
   if (upper.includes('INCOME TAX DEPARTMENT') || upper.includes('PERMANENT ACCOUNT NUMBER') || /[A-Z]{5}[0-9]{4}[A-Z]/.test(upper)) {
     return 'PAN_CARD';
+  }
+  if (upper.includes('GOVERNMENT OF INDIA') || upper.includes('AADHAAR') || upper.includes('UIDAI') || /\d{4}\s\d{4}\s\d{4}/.test(upper)) {
+    return 'AADHAAR_FRONT';
   }
   if (upper.includes('PASSPORT') || upper.includes('REPUBLIC OF INDIA') || upper.includes('P<IND')) {
     return 'PASSPORT';
@@ -350,7 +350,7 @@ export function classifyDocumentType(ocrText: string): DocumentType {
   }
 
   // Default fallback
-  return 'AADHAAR_FRONT';
+  return 'OTHER_IDENTITY_DOC';
 }
 
 /**
