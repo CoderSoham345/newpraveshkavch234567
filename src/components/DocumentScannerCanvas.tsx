@@ -7,7 +7,9 @@ import {
   ShieldCheck,
   QrCode,
   Scan,
-  XCircle
+  XCircle,
+  RefreshCw,
+  Smartphone
 } from 'lucide-react';
 import { DocumentType } from '../types';
 import { 
@@ -34,6 +36,7 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraPermission, setCameraPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
 
   // Detection and Validation States
   const [scanResult, setScanResult] = useState<ScanValidationResult | null>(null);
@@ -51,12 +54,19 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
       }
 
       setErrorMessage(null);
-      const constraints: MediaStreamConstraints = {
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      };
+      let mediaStream: MediaStream;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        });
+      } catch (e) {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        });
+      }
 
-      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
       setStream(mediaStream);
       setCameraPermission('granted');
 
@@ -82,7 +92,11 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
         stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, []);
+  }, [facingMode]);
+
+  const toggleCameraFacingMode = () => {
+    setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
+  };
 
   // Main OpenCV Real-time Detection & Animation Loop (NO AUTO CAPTURE)
   useEffect(() => {
@@ -270,6 +284,25 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
       {/* Top Banner Warning & Real-time Status Guidance */}
       <div className="absolute top-4 left-4 right-4 z-20 flex flex-col items-center pointer-events-none space-y-2">
         
+        {/* Switch Camera Button Overlay */}
+        <div className="w-full flex items-center justify-between pointer-events-auto">
+          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-900/80 text-cyan-300 border border-slate-700/80 shadow-md backdrop-blur-md flex items-center gap-1.5">
+            <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
+            <span>{facingMode === 'environment' ? 'Rear Camera' : 'Front (Selfie)'}</span>
+          </span>
+
+          <button
+            type="button"
+            onClick={toggleCameraFacingMode}
+            className="px-3 py-1.5 rounded-full text-xs font-bold bg-cyan-500/90 hover:bg-cyan-400 text-slate-950 shadow-lg border border-cyan-300 flex items-center gap-1.5 backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+            title="Switch between Rear and Front Camera"
+            id="btn-switch-doc-camera"
+          >
+            <RefreshCw className="w-3.5 h-3.5 animate-spin-once" />
+            <span>Switch Camera</span>
+          </button>
+        </div>
+
         {/* Unsupported Document Warning */}
         {!isSupportedDocType && (
           <div className="bg-rose-600/95 text-white px-5 py-2.5 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-2.5 border border-rose-400">

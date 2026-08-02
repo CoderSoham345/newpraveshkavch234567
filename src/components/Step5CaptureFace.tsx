@@ -9,7 +9,9 @@ import {
   ShieldCheck, 
   Sun,
   Activity,
-  AlertTriangle
+  AlertTriangle,
+  RefreshCw,
+  Smartphone
 } from 'lucide-react';
 import { FaceVerificationData } from '../types';
 
@@ -30,6 +32,7 @@ export const Step5CaptureFace: React.FC<Step5CaptureFaceProps> = ({
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [capturedFaceUrl, setCapturedFaceUrl] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState<boolean>(false);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
 
   // Live quality metrics
   const [faceDetected, setFaceDetected] = useState<boolean>(true);
@@ -39,30 +42,51 @@ export const Step5CaptureFace: React.FC<Step5CaptureFaceProps> = ({
   const [faceMatchScore, setFaceMatchScore] = useState<number>(98);
   const [livenessPassed, setLivenessPassed] = useState<boolean>(true);
 
-  // Start front camera
+  // Start/Switch camera stream (Default Selfie 'user' mode, with toggle)
   useEffect(() => {
-    async function startFrontCamera() {
+    let activeStream: MediaStream | null = null;
+    async function startCamera() {
       try {
-        const mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: false,
-        });
+        if (stream) {
+          stream.getTracks().forEach((track) => track.stop());
+        }
+
+        let mediaStream: MediaStream;
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { exact: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false,
+          });
+        } catch (e) {
+          // Fallback if exact constraint is not supported
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false,
+          });
+        }
+
+        activeStream = mediaStream;
         setStream(mediaStream);
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
         }
       } catch (err) {
-        console.warn('Front Camera error:', err);
+        console.warn('Camera error:', err);
       }
     }
-    startFrontCamera();
+
+    startCamera();
 
     return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+      if (activeStream) {
+        activeStream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, []);
+  }, [facingMode]);
+
+  const toggleCameraFacingMode = () => {
+    setFacingMode((prev) => (prev === 'user' ? 'environment' : 'user'));
+  };
 
   // Compute if face quality meets strict requirements for enabling the Capture button
   const isFaceQualityValid = faceDetected && faceQuality >= 80 && brightness >= 75 && sharpness >= 80 && livenessPassed;
@@ -148,13 +172,34 @@ export const Step5CaptureFace: React.FC<Step5CaptureFaceProps> = ({
             autoPlay
             playsInline
             muted
-            className={`w-full h-full object-cover transform -scale-x-100 ${
-              capturedFaceUrl ? 'hidden' : 'block'
-            }`}
+            className={`w-full h-full object-cover ${
+              facingMode === 'user' ? 'transform -scale-x-100' : ''
+            } ${capturedFaceUrl ? 'hidden' : 'block'}`}
           />
 
           {capturedFaceUrl && (
             <img src={capturedFaceUrl} alt="Captured Face" className="w-full h-full object-cover" />
+          )}
+
+          {/* Camera Controls Overlay (Switch Camera / Selfie Mode & Orientation) */}
+          {!capturedFaceUrl && (
+            <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-20 pointer-events-auto">
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-900/80 text-cyan-300 border border-slate-700/80 shadow-md backdrop-blur-md flex items-center gap-1.5">
+                <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
+                <span>{facingMode === 'user' ? 'Selfie (Front) Mode' : 'Rear Camera Mode'}</span>
+              </span>
+
+              <button
+                type="button"
+                onClick={toggleCameraFacingMode}
+                className="px-3 py-1.5 rounded-full text-xs font-bold bg-cyan-500/90 hover:bg-cyan-400 text-slate-950 shadow-lg border border-cyan-300 flex items-center gap-1.5 backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+                title="Switch between Front (Selfie) and Rear Camera"
+                id="btn-switch-camera"
+              >
+                <RefreshCw className="w-3.5 h-3.5 animate-spin-once" />
+                <span>Switch Camera</span>
+              </button>
+            </div>
           )}
 
           {/* Oval Face Target Guidance Overlay */}
