@@ -43,10 +43,9 @@ export function ResidentDashboard() {
   useEffect(() => {
     const fetchPendingApprovals = async () => {
       try {
-        const response = await fetch('/api/visitors?status=pending_approval&residentId=' + user?.id);
-        if (response.ok) {
-          const data = await response.json();
-          setPendingApprovals(data.visitors || []);
+        const response = await safeFetch('/api/visitors?status=pending_approval&residentId=' + user?.id);
+        if (response.ok && response.data?.visitors) {
+          setPendingApprovals(response.data.visitors);
         }
       } catch (error) {
         console.error('[v0] Error fetching pending approvals:', error);
@@ -62,10 +61,9 @@ export function ResidentDashboard() {
   useEffect(() => {
     const fetchVisitorHistory = async () => {
       try {
-        const response = await fetch('/api/visitors?residentId=' + user?.id);
-        if (response.ok) {
-          const data = await response.json();
-          setVisitorHistory(data.visitors || []);
+        const response = await safeFetch('/api/visitors?residentId=' + user?.id);
+        if (response.ok && response.data?.visitors) {
+          setVisitorHistory(response.data.visitors);
         }
       } catch (error) {
         console.error('[v0] Error fetching visitor history:', error);

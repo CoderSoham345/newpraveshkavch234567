@@ -254,13 +254,16 @@ export function SecurityGuardWorkflow() {
   const handleApproveStatus = async () => {
     if (!currentVisitorRecord) return;
     try {
-      const res = await fetch(`/api/visitors/${currentVisitorRecord.id}/status`, {
+      const res = await safeFetch(`/api/visitors/${currentVisitorRecord.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'APPROVED' }),
       });
-      const data = await res.json();
-      if (data.success) setCurrentVisitorRecord(data.visitor);
+      if (res.ok && res.data?.visitor) {
+        setCurrentVisitorRecord(res.data.visitor);
+      } else {
+        setCurrentVisitorRecord((prev) => prev ? { ...prev, status: 'APPROVED' } : null);
+      }
     } catch (err) {
       setCurrentVisitorRecord((prev) => prev ? { ...prev, status: 'APPROVED' } : null);
     }
@@ -270,15 +273,18 @@ export function SecurityGuardWorkflow() {
   const handleRejectStatus = async (reason: string) => {
     if (!currentVisitorRecord) return;
     try {
-      const res = await fetch(`/api/visitors/${currentVisitorRecord.id}/status`, {
+      const res = await safeFetch(`/api/visitors/${currentVisitorRecord.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'REJECTED', rejectionReason: reason }),
       });
-      const data = await res.json();
-      if (data.success) setCurrentVisitorRecord(data.visitor);
+      if (res.ok && res.data?.visitor) {
+        setCurrentVisitorRecord(res.data.visitor);
+      } else {
+        setCurrentVisitorRecord((prev) => prev ? { ...prev, status: 'REJECTED', rejectionReason: reason } : null);
+      }
     } catch (err) {
-      setCurrentVisitorRecord((prev) => prev ? { ...prev, status: 'REJECTED' } : null);
+      setCurrentVisitorRecord((prev) => prev ? { ...prev, status: 'REJECTED', rejectionReason: reason } : null);
     }
     setCurrentStep(8);
   };
@@ -286,13 +292,16 @@ export function SecurityGuardWorkflow() {
   const handleCheckInPass = async () => {
     if (!currentVisitorRecord) return;
     try {
-      const res = await fetch(`/api/visitors/${currentVisitorRecord.id}/status`, {
+      const res = await safeFetch(`/api/visitors/${currentVisitorRecord.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'CHECKED_IN', checkInAt: new Date().toISOString() }),
       });
-      const data = await res.json();
-      if (data.success) setCurrentVisitorRecord(data.visitor);
+      if (res.ok && res.data?.visitor) {
+        setCurrentVisitorRecord(res.data.visitor);
+      } else {
+        setCurrentVisitorRecord((prev) => prev ? { ...prev, status: 'CHECKED_IN', checkInAt: new Date().toISOString() } : null);
+      }
     } catch (err) {
       console.error('[v0] Check-in error:', err);
     }
@@ -301,13 +310,16 @@ export function SecurityGuardWorkflow() {
   const handleCheckOutPass = async () => {
     if (!currentVisitorRecord) return;
     try {
-      const res = await fetch(`/api/visitors/${currentVisitorRecord.id}/status`, {
+      const res = await safeFetch(`/api/visitors/${currentVisitorRecord.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'CHECKED_OUT', checkOutAt: new Date().toISOString() }),
       });
-      const data = await res.json();
-      if (data.success) setCurrentVisitorRecord(data.visitor);
+      if (res.ok && res.data?.visitor) {
+        setCurrentVisitorRecord(res.data.visitor);
+      } else {
+        setCurrentVisitorRecord((prev) => prev ? { ...prev, status: 'CHECKED_OUT', checkOutAt: new Date().toISOString() } : null);
+      }
     } catch (err) {
       console.error('[v0] Check-out error:', err);
     }

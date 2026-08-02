@@ -1,0 +1,18 @@
+{
+  "short_name": "PraveshKavach",
+  "name": "PraveshKavach™ Enterprise Visitor Management System",
+  "description": "Enterprise Visitor Management System with OCR, Face Verification & Gate Control",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/"
+}
