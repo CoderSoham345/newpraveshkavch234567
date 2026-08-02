@@ -1,0 +1,6 @@
+{
+  "name": "PraveshKavach™ Enterprise VMS",
+  "description": "Enterprise AI-powered PraveshKavach™ Visitor Management System by High Tech Surveillance Systems Pvt. Ltd. with OCR, Face Verification & Gate Access Control",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
