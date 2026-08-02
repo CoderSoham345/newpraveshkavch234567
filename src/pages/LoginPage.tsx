@@ -22,10 +22,10 @@ export function LoginPage() {
     setIsLoggingIn(true);
 
     try {
-      await login(email, password);
+      await login(email, password, rememberMe);
       // App component will automatically redirect to dashboard on successful login
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : 'Invalid Email or Password');
     } finally {
       setIsLoggingIn(false);
     }
@@ -63,14 +63,23 @@ export function LoginPage() {
   };
 
   const demoCredentials = [
-    { role: 'Admin', email: 'admin@test.com', password: 'Password123' },
-    { role: 'Security Guard', email: 'guard@test.com', password: 'Password123' },
-    { role: 'Resident', email: 'resident@test.com', password: 'Password123' },
+    { role: 'Admin', email: 'admin@test.com', password: 'admin123' },
+    { role: 'Security Guard', email: 'guard@test.com', password: 'guard123' },
+    { role: 'Resident', email: 'resident@test.com', password: 'resident123' },
   ];
 
-  const fillCredentials = (testEmail: string, testPassword: string) => {
+  const fillCredentials = async (testEmail: string, testPassword: string) => {
     setEmail(testEmail);
     setPassword(testPassword);
+    setError('');
+    setIsLoggingIn(true);
+    try {
+      await login(testEmail, testPassword, true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid Email or Password');
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   return (
@@ -326,9 +335,8 @@ export function LoginPage() {
 
           {/* Footer */}
           <div className="mt-8 pt-6 border-t border-white/10 text-center text-xs text-slate-400 space-y-2">
-            <p>Session expires after 30 minutes of inactivity</p>
-            <p className="text-slate-500">Using backend authentication validation</p>
-            <p className="text-slate-600">In production: Connect to Firebase Auth or OAuth provider</p>
+            <p>Instant Client-Side Demo Authentication</p>
+            <p className="text-slate-500">Zero backend network requests on login</p>
           </div>
         </div>
       </div>
