@@ -73,14 +73,15 @@ export async function callOCRSpace(
   language: string = 'eng'
 ): Promise<OCRSpaceResponse> {
   try {
+    const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
     const formData = new FormData();
     formData.append('apikey', apiKey);
-    formData.append('base64Image', `data:image/jpeg;base64,${imageBase64}`);
+    formData.append('base64Image', `data:image/jpeg;base64,${cleanBase64}`);
     formData.append('language', language);
-    formData.append('ocrEngine', '2'); // Engine 2 is more accurate for documents
-    formData.append('filetype', 'PDF');
-    formData.append('isOverlayRequired', 'false');
+    formData.append('ocrEngine', '2'); // Engine 2 is best for documents
+    formData.append('isOverlayRequired', 'true');
     formData.append('detectOrientation', 'true');
+    formData.append('scale', 'true');
 
     const response = await fetch('https://api.ocr.space/parse/image', {
       method: 'POST',
@@ -88,16 +89,27 @@ export async function callOCRSpace(
     });
 
     if (!response.ok) {
-      throw new Error(`OCR.Space API error: ${response.status}`);
+      throw new Error(`OCR.Space API error: ${response.status} ${response.statusText}`);
     }
 
-    const data = (await response.json()) as OCRSpaceResponse;
+    const data = (await response.json()) as any;
 
-    if (data.isErroredOnProcessing) {
-      throw new Error(`OCR.Space error: ${data.errorMessage}`);
+    console.log('[v0] ===== OCR.Space API COMPLETE RAW RESPONSE =====');
+    console.log(JSON.stringify(data, null, 2));
+
+    if (data.isErroredOnProcessing || data.IsErroredOnProcessing) {
+      throw new Error(`OCR.Space error: ${data.errorMessage || data.ErrorMessage || 'Processing error'}`);
     }
 
-    return data;
+    const parsedResults = data.ParsedResults || data.parsedResults || [];
+    const firstResult = parsedResults[0] || {};
+    const parsedText = firstResult.ParsedText || data.parsedText || '';
+
+    return {
+      isErroredOnProcessing: false,
+      parsedText,
+      ocrEngineTime: Number(data.ProcessingTimeInMilliseconds || data.ocrEngineTime || 0),
+    };
   } catch (error) {
     console.error('[v0] OCR.Space API error:', error);
     throw error;

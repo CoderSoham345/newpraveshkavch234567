@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, MapPin, AlertTriangle, CheckCircle, Clock, Users, BarChart3, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { safeFetch } from '../utils/safeApi';
 
 interface PendingApproval {
   id: string;
@@ -129,7 +130,7 @@ export function ResidentDashboard() {
   // Handle approval action
   const handleApprovalAction = async (visitorId: string, action: 'approve' | 'reject') => {
     try {
-      const response = await fetch('/api/visitors/approve', {
+      const response = await safeFetch('/api/visitors/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

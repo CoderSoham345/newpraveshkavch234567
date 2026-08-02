@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { safeFetch } from '../utils/safeApi';
 import { Header } from '../components/Header';
 import { Navigation } from '../components/Navigation';
 import { MobileFrame } from '../components/MobileFrame';
@@ -40,43 +41,39 @@ export function AdminDashboardPage() {
     console.log('[v0] AdminDashboard mounted - admin:', user?.name);
 
     // Fetch analytics
-    fetch('/api/analytics')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.analytics) {
-          setAnalytics(data.analytics);
+    safeFetch('/api/analytics')
+      .then(response => {
+        if (response.ok && response.data?.analytics) {
+          setAnalytics(response.data.analytics);
         }
       })
       .catch(err => console.error('[v0] Failed to fetch analytics:', err));
 
     // Fetch buildings
-    fetch('/api/buildings')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && Array.isArray(data.buildings)) {
-          setBuildings(data.buildings);
+    safeFetch('/api/buildings')
+      .then(response => {
+        if (response.ok && Array.isArray(response.data?.buildings)) {
+          setBuildings(response.data.buildings);
         }
       })
       .catch(err => console.error('[v0] Failed to fetch buildings:', err));
 
     // Fetch audit logs
-    fetch('/api/audit-logs')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && Array.isArray(data.logs)) {
-          setAuditLogs(data.logs);
+    safeFetch('/api/audit-logs')
+      .then(response => {
+        if (response.ok && Array.isArray(response.data?.logs)) {
+          setAuditLogs(response.data.logs);
         }
       })
       .catch(err => console.error('[v0] Failed to fetch audit logs:', err));
 
     // Fetch system status
-    fetch('/api/admin/system-status')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.systemStatus) {
+    safeFetch('/api/admin/system-status')
+      .then(response => {
+        if (response.ok && response.data?.systemStatus) {
           setSystemStatus({
-            ocrConfigured: data.systemStatus.ocr?.configured || false,
-            telegramConfigured: data.systemStatus.telegram?.configured || false,
+            ocrConfigured: response.data.systemStatus.ocr?.configured || false,
+            telegramConfigured: response.data.systemStatus.telegram?.configured || false,
             databaseConnected: true,
           });
         }

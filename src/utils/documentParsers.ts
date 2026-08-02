@@ -19,7 +19,7 @@ export interface DocTypeSchema {
 /**
  * Registry of Supported Document Types and their Specific Extraction Schemas
  */
-export const DOCUMENT_SCHEMAS: Record<DocumentType, DocTypeSchema> = {
+export const DOCUMENT_SCHEMAS: Record<string, DocTypeSchema> = {
   'AADHAAR_FRONT': {
     type: 'AADHAAR_FRONT',
     label: 'Aadhaar Card (Front - UIDAI)',
@@ -284,9 +284,42 @@ export const DOCUMENT_SCHEMAS: Record<DocumentType, DocTypeSchema> = {
     fields: [
       { key: 'fullName', label: 'Name', type: 'text', required: true },
       { key: 'documentNumber', label: 'Document Number', type: 'text' },
+      { key: 'dob', label: 'Date of Birth', type: 'text' },
+      { key: 'address', label: 'Address', type: 'text' },
     ],
   },
 };
+
+/**
+ * Safely retrieve DocTypeSchema for any DocumentType or alias
+ */
+export function getDocumentSchema(docType?: string): DocTypeSchema {
+  if (!docType) {
+    return DOCUMENT_SCHEMAS['AADHAAR_FRONT'];
+  }
+
+  if (DOCUMENT_SCHEMAS[docType]) {
+    return DOCUMENT_SCHEMAS[docType];
+  }
+
+  const upper = docType.toUpperCase().replace(/[\s\-_]+/g, '_');
+  if (upper.includes('AADHAAR') || upper.includes('UIDAI')) {
+    if (upper.includes('BACK')) return DOCUMENT_SCHEMAS['AADHAAR_BACK'];
+    return DOCUMENT_SCHEMAS['AADHAAR_FRONT'];
+  }
+  if (upper.includes('PAN')) return DOCUMENT_SCHEMAS['PAN_CARD'];
+  if (upper.includes('PASSPORT')) return DOCUMENT_SCHEMAS['PASSPORT'];
+  if (upper.includes('DRIVING') || upper.includes('LICENCE') || upper.includes('LICENSE')) return DOCUMENT_SCHEMAS['DRIVING_LICENCE'];
+  if (upper.includes('VOTER') || upper.includes('EPIC')) return DOCUMENT_SCHEMAS['VOTER_ID'];
+  if (upper.includes('STUDENT')) return DOCUMENT_SCHEMAS['STUDENT_ID'];
+  if (upper.includes('EMPLOYEE')) {
+    if (upper.includes('GOVT') || upper.includes('GOVERNMENT')) return DOCUMENT_SCHEMAS['GOVT_EMPLOYEE_ID'];
+    return DOCUMENT_SCHEMAS['PRIVATE_EMPLOYEE_ID'];
+  }
+  if (upper.includes('RC') || upper.includes('VEHICLE')) return DOCUMENT_SCHEMAS['RC_BOOK'];
+
+  return DOCUMENT_SCHEMAS['OTHER_IDENTITY_DOC'] || DOCUMENT_SCHEMAS['AADHAAR_FRONT'];
+}
 
 /**
  * Automatically Classifies Document Type based on text keywords & tokens
@@ -376,11 +409,12 @@ export function validateAndComputeFieldConfidences(
     }
   }
 
-  const schema = DOCUMENT_SCHEMAS[docData.documentType] || DOCUMENT_SCHEMAS['Aadhaar Card'];
+  const schema = getDocumentSchema(docData?.documentType);
   const fieldConfidences: Record<string, FieldWithConfidence> = {};
   const lowConfidenceFields: string[] = [];
 
-  schema.fields.forEach((field) => {
+  if (schema && Array.isArray(schema.fields)) {
+    schema.fields.forEach((field) => {
     const val = (docData as any)[field.key] || '';
     let confidence = 98; // Base accuracy for extracted text
     let isValid = true;
@@ -416,6 +450,7 @@ export function validateAndComputeFieldConfidences(
       errorMessage,
     };
   });
+  }
 
   // Calculate overall average confidence score
   const total = Object.values(fieldConfidences).reduce((acc, f) => acc + f.confidence, 0);

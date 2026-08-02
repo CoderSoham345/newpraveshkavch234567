@@ -42,7 +42,8 @@ export type DocumentType =
   | 'POLICE_ID'
   | 'ARMY_ID'
   | 'OTHER_GOVT_ID'
-  | 'OTHER_IDENTITY_DOC';
+  | 'OTHER_IDENTITY_DOC'
+  | 'UNKNOWN';
 
 export type WorkflowStep = 
   | 1 // Dashboard

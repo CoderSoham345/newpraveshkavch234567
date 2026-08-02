@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { safeFetch } from '../utils/safeApi';
 import { 
   Send as TelegramIcon, 
   X, 
@@ -42,10 +43,9 @@ export const TelegramGuardChatModal: React.FC<TelegramGuardChatModalProps> = ({
   const fetchMessages = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/telegram/messages');
-      const data = await res.json();
-      if (data.success && Array.isArray(data.messages)) {
-        setMessages(data.messages);
+      const response = await safeFetch('/api/telegram/messages');
+      if (response.ok && Array.isArray(response.data?.messages)) {
+        setMessages(response.data.messages);
       }
     } catch (e) {
       console.warn('Failed fetching telegram messages:', e);
@@ -90,7 +90,7 @@ export const TelegramGuardChatModal: React.FC<TelegramGuardChatModalProps> = ({
     setSending(true);
 
     try {
-      const res = await fetch('/api/telegram/messages/send', {
+      const response = await safeFetch('/api/telegram/messages/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -100,9 +100,8 @@ export const TelegramGuardChatModal: React.FC<TelegramGuardChatModalProps> = ({
         }),
       });
 
-      const data = await res.json();
-      if (data.success && data.message) {
-        setMessages((prev) => [...prev, data.message]);
+      if (response.ok && response.data?.success && response.data?.message) {
+        setMessages((prev) => [...prev, response.data.message]);
       }
     } catch (err) {
       console.error('Error sending telegram message:', err);

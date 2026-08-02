@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, BarChart3, Users, Building2, AlertCircle, TrendingUp, Database, Shield } from 'lucide-react';
+import { safeFetch } from '../utils/safeApi';
 
 interface DashboardStats {
   totalVisitors: number;
@@ -37,10 +38,9 @@ export function AdminDashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await fetch('/api/admin/stats');
-        if (response.ok) {
-          const data = await response.json();
-          setStats(data.stats);
+        const response = await safeFetch('/api/admin/stats');
+        if (response.ok && response.data?.stats) {
+          setStats(response.data.stats);
         }
       } catch (error) {
         console.error('[v0] Error fetching stats:', error);
@@ -56,10 +56,9 @@ export function AdminDashboard() {
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
-        const response = await fetch('/api/admin/metrics');
-        if (response.ok) {
-          const data = await response.json();
-          setMetrics(data.metrics);
+        const response = await safeFetch('/api/admin/metrics');
+        if (response.ok && response.data?.metrics) {
+          setMetrics(response.data.metrics);
         }
       } catch (error) {
         console.error('[v0] Error fetching metrics:', error);
@@ -75,10 +74,9 @@ export function AdminDashboard() {
   useEffect(() => {
     const fetchTelegramConfig = async () => {
       try {
-        const response = await fetch('/api/telegram/config');
-        if (response.ok) {
-          const data = await response.json();
-          setTelegramConfig(data.config);
+        const response = await safeFetch('/api/telegram/config');
+        if (response.ok && response.data?.config) {
+          setTelegramConfig(response.data.config);
         }
       } catch (error) {
         console.error('[v0] Error fetching telegram config:', error);
@@ -90,12 +88,11 @@ export function AdminDashboard() {
 
   const handleTelegramTest = async () => {
     try {
-      const response = await fetch('/api/telegram/test', { method: 'POST' });
-      const data = await response.json();
-      if (data.success) {
+      const response = await safeFetch('/api/telegram/test', { method: 'POST' });
+      if (response.ok && response.data?.success) {
         alert('Telegram Bot connected successfully!');
       } else {
-        alert(`Telegram Connection Failed: ${data.message}`);
+        alert(`Telegram Connection Failed: ${response.message || response.data?.message || 'Unknown error'}`);
       }
     } catch (error) {
       alert('Error testing Telegram connection');

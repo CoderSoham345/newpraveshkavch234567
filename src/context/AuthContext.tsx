@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { safeFetch } from '../utils/safeApi';
 
 export type UserRole = 'RESIDENT' | 'SECURITY_GUARD' | 'ADMIN';
 
@@ -76,29 +77,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log('[v0] Login attempt:', email);
       
-      const response = await fetch('/api/auth/login', {
+      const response = await safeFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Login failed');
+      if (!response.ok || !response.data?.success) {
+        throw new Error(response.message || response.data?.message || 'Login failed');
       }
 
-      const data = await response.json();
-      console.log('[v0] Login response:', data);
-      
-      if (!data.success || !data.user || !data.token) {
-        throw new Error('Invalid response from server');
+      const data = response.data;
+      if (!data.user || !data.token) {
+        throw new Error('Invalid authentication response format from server');
       }
+
+      const userRole = (data.user.role || (data.role ? data.role.toUpperCase() : 'RESIDENT')) as UserRole;
 
       const newUser: User = {
         id: data.user.id,
         email: data.user.email,
         name: data.user.name,
-        role: data.user.role,
+        role: userRole,
         avatar: data.user.avatar,
         building: data.user.building,
         flatNumber: data.user.flatNumber,
@@ -126,29 +126,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log('[v0] Register attempt:', email, 'role:', role);
       
-      const response = await fetch('/api/auth/register', {
+      const response = await safeFetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, name, role }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Registration failed');
+      if (!response.ok || !response.data?.success) {
+        throw new Error(response.message || response.data?.message || 'Registration failed');
       }
 
-      const data = await response.json();
-      console.log('[v0] Register response:', data);
-      
-      if (!data.success || !data.user || !data.token) {
-        throw new Error('Invalid response from server');
+      const data = response.data;
+      if (!data.user || !data.token) {
+        throw new Error('Invalid registration response format from server');
       }
+
+      const userRole = (data.user.role || (data.role ? data.role.toUpperCase() : 'RESIDENT')) as UserRole;
 
       const newUser: User = {
         id: data.user.id,
         email: data.user.email,
         name: data.user.name,
-        role: data.user.role,
+        role: userRole,
         avatar: data.user.avatar,
         building: data.user.building,
         flatNumber: data.user.flatNumber,
@@ -174,8 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     console.log('[v0] Logout');
     try {
-      // Call backend logout endpoint
-      await fetch('/api/auth/logout', {
+      await safeFetch('/api/auth/logout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

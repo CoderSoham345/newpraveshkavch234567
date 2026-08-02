@@ -100,7 +100,7 @@ PIN: 400706`;
       setScannedDoc(result);
 
       // Show warning if confidence is below 85%
-      if (Object.values(result.fields).some((f: any) => f.confidence < 85)) {
+      if (result?.fields && Object.values(result.fields).some((f: any) => f?.confidence < 85)) {
         setShowConfidenceWarning(true);
       }
 
@@ -200,7 +200,7 @@ PIN: 400706`;
           <div className="bg-slate-800 rounded-lg p-4">
             <h3 className="text-sm font-semibold text-slate-300 mb-4">Extracted Fields</h3>
             <div className="space-y-3">
-              {Object.entries(scannedDoc.fields).map(([fieldName, fieldData]: any) => (
+              {scannedDoc.fields && Object.entries(scannedDoc.fields).map(([fieldName, fieldData]: any) => (
                 <div key={fieldName} className="bg-slate-700 rounded p-3">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
@@ -238,7 +238,7 @@ PIN: 400706`;
           </details>
 
           {/* Manual Review Section */}
-          {showConfidenceWarning && (
+          {showConfidenceWarning && scannedDoc.fields && (
             <div className="bg-amber-900/20 border border-amber-600 rounded-lg p-4">
               <h4 className="text-sm font-semibold text-amber-300 mb-3">Manual Verification Required</h4>
               <div className="space-y-2">

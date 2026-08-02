@@ -13,7 +13,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { ExtractedDocData, FieldWithConfidence } from '../types';
-import { DOCUMENT_SCHEMAS, validateAndComputeFieldConfidences } from '../utils/documentParsers';
+import { DOCUMENT_SCHEMAS, getDocumentSchema, validateAndComputeFieldConfidences } from '../utils/documentParsers';
 
 interface Step3VerifyFrontProps {
   frontImage: string;
@@ -35,7 +35,7 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
 
   // Compute validated data with confidence ratings
   const validatedData = validateAndComputeFieldConfidences(extractedData);
-  const currentSchema = DOCUMENT_SCHEMAS[validatedData.documentType] || DOCUMENT_SCHEMAS['Aadhaar Card'];
+  const currentSchema = getDocumentSchema(validatedData?.documentType);
 
   const handleFieldValueChange = (key: keyof ExtractedDocData, val: any) => {
     const updated = {
@@ -213,7 +213,7 @@ ADDRESS: ${validatedData.address || 'Scanned on Back Document'}`}
 
           {/* Dynamic Form Generation */}
           <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
-            {currentSchema.fields.map((field) => {
+            {(currentSchema?.fields || []).map((field) => {
               const val = (validatedData as any)[field.key] || '';
               const fieldConf: FieldWithConfidence = validatedData.fieldConfidences?.[field.key] || {
                 value: val,

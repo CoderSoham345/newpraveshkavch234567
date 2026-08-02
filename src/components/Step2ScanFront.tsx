@@ -73,6 +73,7 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
       'ARMY_ID': 'Army ID',
       'OTHER_GOVT_ID': 'Other Government ID',
       'OTHER_IDENTITY_DOC': 'Other Identity Document',
+      'UNKNOWN': 'Other / Unrecognized Identity Document',
     };
     return labels[type] || type;
   };

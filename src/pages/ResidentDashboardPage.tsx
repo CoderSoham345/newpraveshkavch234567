@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { safeFetch } from '../utils/safeApi';
 import { Header } from '../components/Header';
 import { Navigation } from '../components/Navigation';
 import { MobileFrame } from '../components/MobileFrame';
@@ -35,12 +36,11 @@ export function ResidentDashboardPage() {
     console.log('[v0] ResidentDashboard mounted - resident:', user?.name, 'flat:', user?.flatNumber);
 
     // Fetch visitors for this resident
-    fetch(`/api/residents/${user?.id}/visitors`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && Array.isArray(data.visitors)) {
-          const pending = data.visitors.filter((v: VisitorRecord) => v.status === 'PENDING');
-          const history = data.visitors;
+    safeFetch(`/api/residents/${user?.id}/visitors`)
+      .then(response => {
+        if (response.ok && Array.isArray(response.data?.visitors)) {
+          const pending = response.data.visitors.filter((v: VisitorRecord) => v.status === 'PENDING');
+          const history = response.data.visitors;
           setPendingApprovals(pending);
           setVisitorHistory(history);
         }
@@ -58,15 +58,14 @@ export function ResidentDashboardPage() {
 
   const handleApprove = async (visitorId: string) => {
     try {
-      const res = await fetch(`/api/visitors/${visitorId}/status`, {
+      const response = await safeFetch(`/api/visitors/${visitorId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'APPROVED' }),
       });
-      const data = await res.json();
-      if (data.success) {
+      if (response.ok && response.data?.success) {
         setPendingApprovals(prev => prev.filter(v => v.id !== visitorId));
-        setVisitorHistory(prev => prev.map(v => v.id === visitorId ? data.visitor : v));
+        setVisitorHistory(prev => prev.map(v => v.id === visitorId ? response.data.visitor : v));
       }
     } catch (err) {
       console.error('[v0] Approval error:', err);
@@ -75,15 +74,14 @@ export function ResidentDashboardPage() {
 
   const handleReject = async (visitorId: string, reason: string) => {
     try {
-      const res = await fetch(`/api/visitors/${visitorId}/status`, {
+      const response = await safeFetch(`/api/visitors/${visitorId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'REJECTED', rejectionReason: reason }),
       });
-      const data = await res.json();
-      if (data.success) {
+      if (response.ok && response.data?.success) {
         setPendingApprovals(prev => prev.filter(v => v.id !== visitorId));
-        setVisitorHistory(prev => prev.map(v => v.id === visitorId ? data.visitor : v));
+        setVisitorHistory(prev => prev.map(v => v.id === visitorId ? response.data.visitor : v));
       }
     } catch (err) {
       console.error('[v0] Rejection error:', err);

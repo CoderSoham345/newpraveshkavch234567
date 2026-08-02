@@ -14,6 +14,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { VisitorRecord } from '../types';
+import { safeFetch } from '../utils/safeApi';
 
 interface Step7WaitingApprovalProps {
   currentVisitor: VisitorRecord;
@@ -36,7 +37,7 @@ export const Step7WaitingApproval: React.FC<Step7WaitingApprovalProps> = ({
   useEffect(() => {
     const dispatchTelegramNotification = async () => {
       try {
-        const res = await fetch('/api/telegram/send-approval', {
+        const response = await safeFetch('/api/telegram/send-approval', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -58,10 +59,9 @@ export const Step7WaitingApproval: React.FC<Step7WaitingApprovalProps> = ({
             address: currentVisitor.address,
           }),
         });
-        const data = await res.json();
-        if (data.success) {
+        if (response.ok && response.data?.success) {
           setTelegramSent(true);
-          setTelegramStatus(data.sentViaRealTelegram ? 'Sent to Real Telegram Bot ✓' : 'Dispatched via Telegram Bot Gateway ✓');
+          setTelegramStatus(response.data.sentViaRealTelegram ? 'Sent to Real Telegram Bot ✓' : 'Dispatched via Telegram Bot Gateway ✓');
         }
       } catch (e) {
         setTelegramStatus('Telegram Dispatch Active');

@@ -19,6 +19,7 @@ import {
   Send
 } from 'lucide-react';
 import { SystemBuilding, AuditLogItem } from '../types';
+import { safeFetch } from '../utils/safeApi';
 
 interface AdminSettingsProps {
   buildings: SystemBuilding[];
@@ -57,14 +58,13 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ buildings, auditLo
 
   useEffect(() => {
     // Fetch Telegram settings status from server (read-only)
-    fetch('/api/telegram/config')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.config) {
+    safeFetch('/api/telegram/config')
+      .then((response) => {
+        if (response.ok && response.data?.success && response.data?.config) {
           setBotConfigStatus({
-            botConfigured: data.config.hasBotToken,
-            chatIdConfigured: !!data.config.defaultChatId,
-            lastMessageTime: data.config.lastMessageTime,
+            botConfigured: response.data.config.hasBotToken,
+            chatIdConfigured: !!response.data.config.defaultChatId,
+            lastMessageTime: response.data.config.lastMessageTime,
           });
         }
       })
@@ -76,32 +76,22 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ buildings, auditLo
     console.log('[v0] Testing Telegram connection using backend environment variables');
     try {
       console.log('[v0] Sending POST to /api/telegram/test');
-      const res = await fetch('/api/telegram/test', {
+      const response = await safeFetch('/api/telegram/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}), // No user input - uses env vars only
       });
       
-      console.log('[v0] Response status:', res.status, res.statusText);
-      console.log('[v0] Response content-type:', res.headers.get('content-type'));
-      
-      if (!res.ok) {
-        console.error('[v0] Response not OK, attempting to read text first');
-        const text = await res.text();
-        console.error('[v0] Response body (first 200 chars):', text.substring(0, 200));
-        throw new Error(`HTTP ${res.status}: ${text.substring(0, 100)}`);
-      }
-      
-      const data = await res.json();
-      console.log('[v0] Parsed JSON response:', { success: data.success, message: data.message });
+      console.log('[v0] safeFetch response:', response);
+      const data = response.data || {};
       
       setConnectionStatus({
         tested: true,
-        success: data.success,
-        message: data.message || (data.success ? 'Telegram Connected Successfully' : 'Telegram Connection Failed'),
+        success: response.ok && !!data.success,
+        message: data.message || response.message || (response.ok ? 'Telegram Connected Successfully' : 'Telegram Connection Failed'),
         botName: data.botInfo?.username ? `@${data.botInfo.username}` : undefined,
       });
-      if (data.success) {
+      if (response.ok && data.success) {
         setBotConfigStatus(prev => ({
           ...prev,
           lastMessageTime: new Date().toISOString(),

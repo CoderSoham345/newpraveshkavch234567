@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { safeFetch } from '../utils/safeApi';
 import { Header } from '../components/Header';
 import { Navigation } from '../components/Navigation';
 import { MobileFrame } from '../components/MobileFrame';
@@ -89,31 +90,28 @@ export function SecurityGuardWorkflow() {
     console.log('[v0] SecurityGuardWorkflow mounted - user:', user?.name, 'gate:', user?.gate);
     
     // Fetch visitors
-    fetch('/api/visitors')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && Array.isArray(data.visitors)) {
-          setVisitors(data.visitors);
+    safeFetch('/api/visitors')
+      .then(response => {
+        if (response.ok && Array.isArray(response.data?.visitors)) {
+          setVisitors(response.data.visitors);
         }
       })
       .catch(err => console.error('[v0] Failed to fetch visitors:', err));
 
     // Fetch residents
-    fetch('/api/residents')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && Array.isArray(data.residents)) {
-          setResidents(data.residents);
+    safeFetch('/api/residents')
+      .then(response => {
+        if (response.ok && Array.isArray(response.data?.residents)) {
+          setResidents(response.data.residents);
         }
       })
       .catch(err => console.error('[v0] Failed to fetch residents:', err));
 
     // Fetch buildings
-    fetch('/api/buildings')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && Array.isArray(data.buildings)) {
-          setBuildings(data.buildings);
+    safeFetch('/api/buildings')
+      .then(response => {
+        if (response.ok && Array.isArray(response.data?.buildings)) {
+          setBuildings(response.data.buildings);
         }
       })
       .catch(err => console.error('[v0] Failed to fetch buildings:', err));
@@ -144,14 +142,13 @@ export function SecurityGuardWorkflow() {
     }
 
     try {
-      const res = await fetch('/api/ocr', {
+      const response = await safeFetch('/api/ocr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: imageUrl, docType: selectedDocType }),
       });
-      const data = await res.json();
-      if (data.success && data.extractedData) {
-        setExtractedData(data.extractedData);
+      if (response.ok && response.data?.extractedData) {
+        setExtractedData(response.data.extractedData);
       }
     } catch (err) {
       console.error('[v0] OCR error:', err);
@@ -208,16 +205,15 @@ export function SecurityGuardWorkflow() {
     };
 
     try {
-      const res = await fetch('/api/visitors', {
+      const response = await safeFetch('/api/visitors', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (data.success && data.visitor) {
-        setCurrentVisitorRecord(data.visitor);
-        setVisitors((prev) => [data.visitor, ...prev]);
-        setCurrentStep(data.visitor.status === 'APPROVED' ? 8 : 7);
+      if (response.ok && response.data?.visitor) {
+        setCurrentVisitorRecord(response.data.visitor);
+        setVisitors((prev) => [response.data.visitor, ...prev]);
+        setCurrentStep(response.data.visitor.status === 'APPROVED' ? 8 : 7);
         return;
       }
     } catch (err) {

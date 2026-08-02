@@ -8,6 +8,7 @@
  */
 
 import { ExtractedDocData, FaceVerificationData } from '../types';
+import { parseResponseJson } from '../utils/safeApi';
 
 export interface TelegramApprovalMessage {
   visitorId: string;
@@ -60,8 +61,8 @@ class TelegramService {
       }
 
       const response = await fetch(`${this.apiBaseUrl}/bot${this.botToken}/getMe`);
-      const data = await response.json();
-      return data.ok === true;
+      const parsed = await parseResponseJson(response);
+      return parsed.data?.ok === true;
     } catch (error) {
       console.error('Telegram connection verification failed:', error);
       return false;
@@ -176,7 +177,8 @@ class TelegramService {
         }),
       });
 
-      const data = await response.json();
+      const parsed = await parseResponseJson(response);
+      const data = parsed.data || {};
 
       if (data.ok && data.result) {
         return {
@@ -194,7 +196,7 @@ class TelegramService {
           visitorId: approval.visitorId,
           residentId: approval.residentChatId,
           approvalStatus: 'pending',
-          message: `Telegram API Error: ${data.description || 'Unknown error'}`,
+          message: `Telegram API Error: ${data.description || parsed.message || 'Unknown error'}`,
         };
       }
     } catch (error: any) {
@@ -226,7 +228,8 @@ class TelegramService {
       }),
     });
 
-    return response.json();
+    const parsed = await parseResponseJson(response);
+    return parsed.data;
   }
 
   /**
@@ -259,8 +262,8 @@ Time: ${new Date().toLocaleTimeString()}
         }),
       });
 
-      const data = await response.json();
-      return data.ok === true;
+      const parsed = await parseResponseJson(response);
+      return parsed.data?.ok === true;
     } catch (error) {
       console.error('[Telegram] Error sending status update:', error);
       return false;
