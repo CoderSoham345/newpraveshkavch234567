@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PraveshKavach</string>
+    <string name="title_activity_main">PraveshKavach</string>
+    <string name="package_name">com.praveshkavach.vms</string>
+    <string name="custom_url_scheme">com.praveshkavach.vms</string>
+</resources>
