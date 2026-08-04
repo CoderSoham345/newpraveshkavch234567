@@ -14,9 +14,11 @@ import {
   UserCheck, 
   FileText,
   Sparkles,
-  Barcode
+  Barcode,
+  FolderDown
 } from 'lucide-react';
 import { VisitorRecord } from '../types';
+import { SaveDocumentModal } from './SaveDocumentModal';
 
 interface Step8ApprovalResultProps {
   visitor: VisitorRecord;
@@ -32,6 +34,7 @@ export const Step8ApprovalResult: React.FC<Step8ApprovalResultProps> = ({
   onNewVerification,
 }) => {
   const [copied, setCopied] = useState<boolean>(false);
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState<boolean>(false);
 
   const isApproved = visitor.status === 'APPROVED' || visitor.status === 'CHECKED_IN' || visitor.status === 'CHECKED_OUT';
 
@@ -186,6 +189,17 @@ export const Step8ApprovalResult: React.FC<Step8ApprovalResultProps> = ({
           {/* Gate Entry & Status Action Bar */}
           <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 print:hidden">
             <div className="flex items-center gap-2">
+              {visitor.frontDocUrl && (
+                <button
+                  onClick={() => setIsSaveModalOpen(true)}
+                  className="px-3.5 py-2 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-xs font-bold text-cyan-300 border border-cyan-500/30 flex items-center gap-1.5 shadow"
+                  id="btn-save-doc-step8"
+                >
+                  <FolderDown className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Save Doc PDF</span>
+                </button>
+              )}
+
               <button
                 onClick={handlePrint}
                 className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 flex items-center gap-1.5"
@@ -220,18 +234,24 @@ export const Step8ApprovalResult: React.FC<Step8ApprovalResultProps> = ({
             {visitor.status === 'CHECKED_IN' && (
               <button
                 onClick={onCheckOut}
-                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-black text-xs shadow-lg flex items-center gap-2"
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-amber-600 hover:from-rose-400 hover:to-amber-500 text-white font-black text-xs shadow-lg flex items-center gap-2"
                 id="btn-mark-checkout"
               >
                 <Clock className="w-4 h-4" />
-                <span>MARK CHECKED OUT</span>
+                <span>MARK CHECKED OUT (VISITOR EXIT)</span>
               </button>
             )}
 
             {visitor.status === 'CHECKED_OUT' && (
-              <span className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-400 text-xs font-bold">
-                Pass Checked Out & Closed
-              </span>
+              <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-xl border border-emerald-500/30">
+                <div className="text-right text-[11px] font-mono">
+                  <p className="text-emerald-400 font-bold">Checked Out: {visitor.checkOutAt ? new Date(visitor.checkOutAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Done'}</p>
+                  <p className="text-cyan-300">Duration: {visitor.visitDuration || 'Completed'}</p>
+                </div>
+                <span className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 text-xs font-black border border-emerald-500/40">
+                  VISITOR CHECKED OUT
+                </span>
+              </div>
             )}
           </div>
 
@@ -249,6 +269,22 @@ export const Step8ApprovalResult: React.FC<Step8ApprovalResultProps> = ({
           <span>START NEW VISITOR VERIFICATION</span>
         </button>
       </div>
+
+      {/* Save Document Modal */}
+      {visitor.frontDocUrl && (
+        <SaveDocumentModal
+          isOpen={isSaveModalOpen}
+          onClose={() => setIsSaveModalOpen(false)}
+          processedImageUrl={visitor.frontDocUrl}
+          docType={visitor.documentType}
+          extractedData={{
+            fullName: visitor.visitorName,
+            documentNumber: visitor.documentNumber,
+            documentType: visitor.documentType as any,
+          }}
+          visitorName={visitor.visitorName}
+        />
+      )}
 
     </div>
   );

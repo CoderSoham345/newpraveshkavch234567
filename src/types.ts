@@ -170,6 +170,8 @@ export interface VisitorRecord {
   rejectedAt?: string;
   checkInAt?: string;
   checkOutAt?: string;
+  visitDuration?: string;
+  visitDurationMinutes?: number;
   gateName: string;
   guardName: string;
   qrCodeValue: string;
@@ -196,6 +198,8 @@ export interface AuditLogItem {
   role: UserRole;
   details: string;
   ipAddress: string;
+  gateName?: string;
+  deviceName?: string;
 }
 
 export interface AnalyticsStats {
@@ -203,9 +207,36 @@ export interface AnalyticsStats {
   currentlyInside: number;
   pendingApprovals: number;
   rejectedVisitorsToday: number;
+  completedVisitsToday?: number;
   avgVerificationTimeSec: number;
   peakHour: string;
   weeklyTrends: { day: string; count: number; approved: number; rejected: number }[];
   hourlyTraffic: { hour: string; count: number }[];
   purposeBreakdown: { purpose: string; count: number; percentage: number }[];
 }
+
+export type ScanExportFormat = 'pdf' | 'png' | 'jpeg';
+
+export interface SavedScanDocument {
+  id: string;
+  title: string;
+  fileName: string;
+  folder: string; // "Scans"
+  docType: DocumentType;
+  docTypeLabel: string;
+  format: ScanExportFormat;
+  processedImageUrl: string; // Cropped, perspective corrected, enhanced image
+  fileUrl: string; // PDF data URI or JPEG/PNG data URI
+  pdfUrl?: string; // High-quality vector PDF data URI
+  extractedData?: ExtractedDocData;
+  ocrConfidence?: number;
+  createdAt: string; // ISO String
+  fileSizeBytes: number;
+  dimensions?: { width: number; height: number };
+  qrCodeData?: string | null;
+  visitorId?: string;
+  visitorName?: string;
+  savedBy: string;
+  isEncrypted?: boolean;
+}
+

@@ -10,10 +10,12 @@ import {
   BadgeCheck,
   AlertCircle,
   QrCode,
-  UserCheck
+  UserCheck,
+  FolderDown
 } from 'lucide-react';
 import { ExtractedDocData, FieldWithConfidence } from '../types';
 import { DOCUMENT_SCHEMAS, getDocumentSchema, validateAndComputeFieldConfidences } from '../utils/documentParsers';
+import { SaveDocumentModal } from './SaveDocumentModal';
 
 interface Step3VerifyFrontProps {
   frontImage: string;
@@ -21,6 +23,7 @@ interface Step3VerifyFrontProps {
   setExtractedData: (data: ExtractedDocData) => void;
   onProceedToScanBack: () => void;
   onRetakeFront: () => void;
+  onNavigateToHistory?: () => void;
 }
 
 export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
@@ -29,9 +32,11 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
   setExtractedData,
   onProceedToScanBack,
   onRetakeFront,
+  onNavigateToHistory,
 }) => {
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [showRawOcr, setShowRawOcr] = useState<boolean>(false);
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState<boolean>(false);
 
   // Compute validated data with confidence ratings
   const validatedData = validateAndComputeFieldConfidences(extractedData);
@@ -303,11 +308,20 @@ DOB: ${validatedData.dob || 'Not Detected'}`}
             })}
           </div>
 
-          {/* Action Button: Proceed to Live Face Check */}
-          <div className="pt-2">
+          {/* Action Buttons: Save Document & Proceed to Live Face Check */}
+          <div className="pt-2 flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={() => setIsSaveModalOpen(true)}
+              className="px-4 py-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-300 font-extrabold text-xs border border-cyan-500/40 flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg"
+              id="btn-open-save-doc-modal"
+            >
+              <FolderDown className="w-4 h-4 text-cyan-400" />
+              <span>Save Document (PDF/PNG)</span>
+            </button>
+
             <button
               onClick={onProceedToScanBack}
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-extrabold text-xs shadow-xl shadow-blue-500/20 flex items-center justify-center gap-2 uppercase tracking-wider"
+              className="flex-1 py-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-extrabold text-xs shadow-xl shadow-blue-500/20 flex items-center justify-center gap-2 uppercase tracking-wider"
               id="btn-continue-scan-back"
             >
               <span>CONFIRM DETAILS & PROCEED TO FACE CAPTURE</span>
@@ -318,6 +332,18 @@ DOB: ${validatedData.dob || 'Not Detected'}`}
         </div>
 
       </div>
+
+      {/* Save Document Modal */}
+      <SaveDocumentModal
+        isOpen={isSaveModalOpen}
+        onClose={() => setIsSaveModalOpen(false)}
+        processedImageUrl={frontImage}
+        docType={validatedData.documentType}
+        extractedData={extractedData}
+        qrCodeData={validatedData.qrCodeData}
+        visitorName={extractedData.fullName}
+        onNavigateToHistory={onNavigateToHistory}
+      />
 
     </div>
   );

@@ -175,6 +175,18 @@ export function SecurityGuardWorkflow() {
   useEffect(() => {
     console.log('[v0] SecurityGuardWorkflow mounted - user:', user?.name, 'gate:', user?.gate);
     
+    // Fetch analytics
+    safeFetch('/api/analytics')
+      .then(response => {
+        if (response.ok && response.data?.analytics) {
+          setAnalytics(response.data.analytics);
+        }
+        if (response.ok && Array.isArray(response.data?.auditLogs)) {
+          setAuditLogs(response.data.auditLogs);
+        }
+      })
+      .catch(err => console.error('[v0] Failed to fetch analytics:', err));
+
     // Fetch visitors
     safeFetch('/api/visitors')
       .then(response => {
@@ -202,6 +214,51 @@ export function SecurityGuardWorkflow() {
       })
       .catch(err => console.error('[v0] Failed to fetch buildings:', err));
   }, [user]);
+
+  // Real-time SSE listener for instant cross-device and exit updates
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/events');
+      eventSource.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.type === 'visitor_updated' || parsed.type === 'visitor_exit') {
+            const updatedVis: VisitorRecord = parsed.data?.visitor || parsed.data;
+            if (updatedVis && updatedVis.id) {
+              setVisitors((prev) => {
+                const idx = prev.findIndex((v) => v.id === updatedVis.id || v.passNumber === updatedVis.passNumber);
+                if (idx >= 0) {
+                  const updatedList = [...prev];
+                  updatedList[idx] = updatedVis;
+                  return updatedList;
+                }
+                return [updatedVis, ...prev];
+              });
+
+              if (currentVisitorRecord && (currentVisitorRecord.id === updatedVis.id || currentVisitorRecord.passNumber === updatedVis.passNumber)) {
+                setCurrentVisitorRecord(updatedVis);
+              }
+            }
+
+            // Refresh analytics and audit logs
+            safeFetch('/api/analytics').then((res) => {
+              if (res.ok && res.data?.analytics) setAnalytics(res.data.analytics);
+              if (res.ok && Array.isArray(res.data?.auditLogs)) setAuditLogs(res.data.auditLogs);
+            });
+          }
+        } catch (e) {
+          // parse error ignored
+        }
+      };
+    } catch (err) {
+      console.warn('[v0] SSE EventSource connection warning:', err);
+    }
+
+    return () => {
+      if (eventSource) eventSource.close();
+    };
+  }, [currentVisitorRecord]);
 
   // Update sync clock
   useEffect(() => {
@@ -411,19 +468,42 @@ export function SecurityGuardWorkflow() {
 
   const handleCheckOutPass = async () => {
     if (!currentVisitorRecord) return;
+    await handleMarkExit(currentVisitorRecord.id);
+  };
+
+  const handleMarkExit = async (visitorId: string) => {
     try {
-      const res = await safeFetch(`/api/visitors/${currentVisitorRecord.id}/status`, {
-        method: 'PATCH',
+      const res = await safeFetch(`/api/visitors/${visitorId}/exit`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'CHECKED_OUT', checkOutAt: new Date().toISOString() }),
+        body: JSON.stringify({ performedBy: user?.name || 'Security Guard', gateName: user?.gate || 'Main Gate 01' }),
       });
+
       if (res.ok && res.data?.visitor) {
-        setCurrentVisitorRecord(res.data.visitor);
+        const updatedVisitor = res.data.visitor;
+        setVisitors((prev) =>
+          prev.map((v) => (v.id === visitorId || v.passNumber === updatedVisitor.passNumber ? updatedVisitor : v))
+        );
+        if (currentVisitorRecord && (currentVisitorRecord.id === visitorId || currentVisitorRecord.passNumber === updatedVisitor.passNumber)) {
+          setCurrentVisitorRecord(updatedVisitor);
+        }
       } else {
-        setCurrentVisitorRecord((prev) => prev ? { ...prev, status: 'CHECKED_OUT', checkOutAt: new Date().toISOString() } : null);
+        const now = new Date().toISOString();
+        setVisitors((prev) =>
+          prev.map((v) => (v.id === visitorId ? { ...v, status: 'CHECKED_OUT', checkOutAt: now, visitDuration: '12 mins' } : v))
+        );
+      }
+
+      // Re-fetch analytics & audit logs
+      const analyticsRes = await safeFetch('/api/analytics');
+      if (analyticsRes.ok && analyticsRes.data?.analytics) {
+        setAnalytics(analyticsRes.data.analytics);
+      }
+      if (analyticsRes.ok && Array.isArray(analyticsRes.data?.auditLogs)) {
+        setAuditLogs(analyticsRes.data.auditLogs);
       }
     } catch (err) {
-      console.error('[v0] Check-out error:', err);
+      console.error('[v0] Exit marking error:', err);
     }
   };
 
@@ -469,6 +549,7 @@ export function SecurityGuardWorkflow() {
               currentRole="SECURITY_GUARD"
               onStartVerification={handleStartWorkflow}
               onNavigateTab={setActiveTab}
+              onMarkExit={handleMarkExit}
             />
           )}
 
@@ -496,6 +577,7 @@ export function SecurityGuardWorkflow() {
                   setExtractedData={setExtractedData}
                   onProceedToScanBack={handleProceedToFaceCheck}
                   onRetakeFront={() => setCurrentStep(2)}
+                  onNavigateToHistory={() => setActiveTab('history')}
                 />
               )}
               {currentStep === 5 && (
@@ -549,6 +631,8 @@ export function SecurityGuardWorkflow() {
           {activeTab === 'history' && (
             <VisitorHistory
               visitors={visitors}
+              auditLogs={auditLogs}
+              onMarkExit={handleMarkExit}
               onSelectVisitor={(visitor) => {
                 setCurrentVisitorRecord(visitor);
                 setActiveTab('scanner');
@@ -558,6 +642,14 @@ export function SecurityGuardWorkflow() {
                 setVisitors((prev) =>
                   prev.map((v) => (v.id === id ? { ...v, status } : v))
                 );
+              }}
+              onDeleteVisitor={async (id) => {
+                try {
+                  await safeFetch(`/api/visitors/${id}`, { method: 'DELETE' });
+                  setVisitors((prev) => prev.filter((v) => v.id !== id));
+                } catch (e) {
+                  setVisitors((prev) => prev.filter((v) => v.id !== id));
+                }
               }}
             />
           )}

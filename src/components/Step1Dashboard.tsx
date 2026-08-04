@@ -25,6 +25,7 @@ interface Step1DashboardProps {
   currentRole: UserRole;
   onStartVerification: () => void;
   onNavigateTab: (tab: 'scanner' | 'history' | 'residents' | 'reports' | 'admin') => void;
+  onMarkExit?: (visitorId: string) => void;
 }
 
 export const Step1Dashboard: React.FC<Step1DashboardProps> = ({
@@ -33,7 +34,11 @@ export const Step1Dashboard: React.FC<Step1DashboardProps> = ({
   currentRole,
   onStartVerification,
   onNavigateTab,
+  onMarkExit,
 }) => {
+  const activeInsideVisitors = recentVisitors.filter(
+    (v) => v.status === 'CHECKED_IN' || v.status === 'APPROVED'
+  );
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       
@@ -146,6 +151,57 @@ export const Step1Dashboard: React.FC<Step1DashboardProps> = ({
 
       </div>
 
+      {/* Active Visitors Currently Inside Section */}
+      {activeInsideVisitors.length > 0 && (
+        <div className="bg-slate-900/90 border border-emerald-500/30 rounded-2xl p-5 shadow-xl bg-gradient-to-r from-emerald-950/20 to-slate-900">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              </span>
+              <h2 className="text-base font-bold text-white">Currently Inside Premises ({activeInsideVisitors.length})</h2>
+            </div>
+            <span className="text-xs text-emerald-400 font-semibold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
+              Live Gate Sync
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {activeInsideVisitors.map((v) => (
+              <div key={v.id} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 shadow">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {v.liveFaceUrl ? (
+                    <img src={v.liveFaceUrl} alt={v.visitorName} className="w-9 h-9 rounded-full object-cover border border-emerald-500/40 shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-slate-800 text-emerald-400 font-extrabold flex items-center justify-center shrink-0 border border-emerald-500/30">
+                      {v.visitorName[0]}
+                    </div>
+                  )}
+                  <div className="truncate">
+                    <p className="font-bold text-white text-xs truncate">{v.visitorName}</p>
+                    <p className="text-[11px] text-slate-400 truncate">Host: {v.residentName} ({v.buildingUnit})</p>
+                    <p className="text-[10px] text-cyan-400 font-mono mt-0.5">
+                      Check-in: {v.checkInAt ? new Date(v.checkInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'}
+                    </p>
+                  </div>
+                </div>
+
+                {onMarkExit && (
+                  <button
+                    onClick={() => onMarkExit(v.id)}
+                    className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold text-xs shrink-0 transition-all flex items-center gap-1 shadow"
+                    id={`btn-mark-exit-${v.id}`}
+                  >
+                    <span>Mark Exit</span>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Metrics Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         
@@ -154,7 +210,7 @@ export const Step1Dashboard: React.FC<Step1DashboardProps> = ({
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Visitors Today</p>
             <p className="text-2xl font-extrabold text-white mt-1">{stats.totalVisitorsToday}</p>
             <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1 mt-1">
-              <TrendingUp className="w-3 h-3" /> +14% vs yesterday
+              <TrendingUp className="w-3 h-3" /> Real-time active log
             </span>
           </div>
           <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
@@ -166,7 +222,7 @@ export const Step1Dashboard: React.FC<Step1DashboardProps> = ({
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Currently Inside</p>
             <p className="text-2xl font-extrabold text-emerald-400 mt-1">{stats.currentlyInside}</p>
-            <span className="text-[11px] text-slate-400 mt-1 block">Active Passes</span>
+            <span className="text-[11px] text-slate-400 mt-1 block">Active Inside Premises</span>
           </div>
           <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
             <ShieldCheck className="w-6 h-6" />
@@ -186,12 +242,12 @@ export const Step1Dashboard: React.FC<Step1DashboardProps> = ({
 
         <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Avg Verification</p>
-            <p className="text-2xl font-extrabold text-cyan-400 mt-1">{stats.avgVerificationTimeSec}s</p>
-            <span className="text-[11px] text-cyan-300/80 font-medium mt-1 block">AI Vision OCR Speed</span>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Completed Visits</p>
+            <p className="text-2xl font-extrabold text-cyan-400 mt-1">{stats.completedVisitsToday ?? recentVisitors.filter(v => v.status === 'CHECKED_OUT').length}</p>
+            <span className="text-[11px] text-cyan-300/80 font-medium mt-1 block">Successfully Checked Out</span>
           </div>
           <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
-            <Activity className="w-6 h-6" />
+            <UserCheck className="w-6 h-6" />
           </div>
         </div>
 
@@ -226,11 +282,11 @@ export const Step1Dashboard: React.FC<Step1DashboardProps> = ({
                 <th className="pb-3 font-semibold">Resident / Unit</th>
                 <th className="pb-3 font-semibold">Purpose</th>
                 <th className="pb-3 font-semibold">Status</th>
-                <th className="pb-3 font-semibold text-right">Time</th>
+                <th className="pb-3 font-semibold text-right">Actions / Time</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-200">
-              {recentVisitors.slice(0, 5).map((visitor) => (
+              {recentVisitors.slice(0, 8).map((visitor) => (
                 <tr key={visitor.id} className="hover:bg-slate-800/40 transition-colors">
                   <td className="py-3 pr-2">
                     <div className="flex items-center gap-2.5">
@@ -259,24 +315,45 @@ export const Step1Dashboard: React.FC<Step1DashboardProps> = ({
                   <td className="py-3 font-medium text-slate-300">{visitor.purpose}</td>
                   <td className="py-3">
                     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                      visitor.status === 'APPROVED' || visitor.status === 'CHECKED_IN'
+                      visitor.status === 'CHECKED_IN' || visitor.status === 'APPROVED'
                         ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                        : visitor.status === 'CHECKED_OUT'
+                        ? 'bg-slate-800 text-slate-300 border border-slate-700'
                         : visitor.status === 'PENDING'
                         ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                         : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                     }`}>
-                      {visitor.status === 'APPROVED' || visitor.status === 'CHECKED_IN' ? (
-                        <CheckCircle2 className="w-3 h-3" />
+                      {visitor.status === 'CHECKED_IN' || visitor.status === 'APPROVED' ? (
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                      ) : visitor.status === 'CHECKED_OUT' ? (
+                        <UserCheck className="w-3 h-3 text-cyan-400" />
                       ) : visitor.status === 'PENDING' ? (
-                        <Clock className="w-3 h-3" />
+                        <Clock className="w-3 h-3 text-amber-400" />
                       ) : (
-                        <XCircle className="w-3 h-3" />
+                        <XCircle className="w-3 h-3 text-rose-400" />
                       )}
-                      <span>{visitor.status}</span>
+                      <span>
+                        {visitor.status === 'CHECKED_IN'
+                          ? 'Inside'
+                          : visitor.status === 'CHECKED_OUT'
+                          ? `Checked Out (${visitor.visitDuration || 'Completed'})`
+                          : visitor.status}
+                      </span>
                     </span>
                   </td>
-                  <td className="py-3 text-right text-slate-400 font-mono text-[11px]">
-                    {new Date(visitor.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <td className="py-3 text-right">
+                    {(visitor.status === 'CHECKED_IN' || visitor.status === 'APPROVED') && onMarkExit ? (
+                      <button
+                        onClick={() => onMarkExit(visitor.id)}
+                        className="px-2.5 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/20 text-[11px] font-bold transition-colors"
+                      >
+                        Exit
+                      </button>
+                    ) : (
+                      <span className="text-slate-400 font-mono text-[11px]">
+                        {new Date(visitor.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
