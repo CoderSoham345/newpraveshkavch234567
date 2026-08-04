@@ -11,7 +11,7 @@ import { BarChart3, Users, Building2, Shield, FileText, Settings, Activity, Aler
 import { AnalyticsStats, SystemBuilding, AuditLogItem, VisitorRecord } from '../types';
 
 export function AdminDashboardPage() {
-  const { user, logout } = useAuth();
+  const { user, logout, switchRole } = useAuth();
   const [isMobileView, setIsMobileView] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'analytics' | 'settings'>('dashboard');
   const [syncTime, setSyncTime] = useState<string>(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -105,8 +105,8 @@ export function AdminDashboardPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       <Header
-        currentRole="ADMIN"
-        setCurrentRole={() => {}}
+        currentRole={user?.role || 'ADMIN'}
+        setCurrentRole={switchRole}
         isMobileView={isMobileView}
         setIsMobileView={setIsMobileView}
         pendingApprovalsCount={0}

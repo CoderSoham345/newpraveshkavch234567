@@ -12,7 +12,7 @@ import { CheckCircle2, FileText, Users, Car, Bell, Clock, X } from 'lucide-react
 import { VisitorRecord, AnalyticsStats } from '../types';
 
 export function ResidentDashboardPage() {
-  const { user, logout } = useAuth();
+  const { user, logout, switchRole } = useAuth();
   const [isMobileView, setIsMobileView] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'settings'>('dashboard');
   const [syncTime, setSyncTime] = useState<string>(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -91,8 +91,8 @@ export function ResidentDashboardPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       <Header
-        currentRole="RESIDENT"
-        setCurrentRole={() => {}}
+        currentRole={user?.role || 'RESIDENT'}
+        setCurrentRole={switchRole}
         isMobileView={isMobileView}
         setIsMobileView={setIsMobileView}
         pendingApprovalsCount={pendingApprovals.length}

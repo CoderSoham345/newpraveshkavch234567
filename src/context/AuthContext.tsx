@@ -21,6 +21,7 @@ interface AuthContextType {
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (email: string, password: string, name: string, role: UserRole) => Promise<void>;
   logout: () => Promise<void>;
+  switchRole: (newRole: UserRole) => void;
   isAuthenticated: boolean;
   sessionToken: string | null;
   getDashboardPath: () => string;
@@ -93,16 +94,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
       const storedUser = localStorage.getItem('praveshkavach_user') || sessionStorage.getItem('praveshkavach_user');
       const storedToken = localStorage.getItem('praveshkavach_token') || sessionStorage.getItem('praveshkavach_token');
+      const storedRole = localStorage.getItem('role');
 
-      if (isLoggedIn && storedUser) {
-        const parsedUser = JSON.parse(storedUser);
+      if (storedUser) {
+        const parsedUser: User = JSON.parse(storedUser);
+        if (storedRole) {
+          const norm = storedRole.toLowerCase();
+          const activeRole: UserRole = (norm === 'admin') ? 'ADMIN' : (norm === 'security' || norm === 'security_guard' || norm === 'guard') ? 'SECURITY_GUARD' : 'RESIDENT';
+          parsedUser.role = activeRole;
+        }
         setUser(parsedUser);
         setSessionToken(storedToken || 'demo-token');
-        console.log('[v0] Restored demo user session:', parsedUser.email, 'role:', parsedUser.role);
-      } else if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-        setSessionToken(storedToken || 'demo-token');
+        console.log('[v0] Restored user session:', parsedUser.email, 'role:', parsedUser.role);
       }
     } catch (error) {
       console.error('[v0] Failed to restore session:', error);
@@ -278,6 +281,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSessionToken(null);
   };
 
+  const switchRole = (newRole: UserRole) => {
+    if (!user) return;
+    const roleStr = normalizeRoleString(newRole);
+    const updatedUser: User = {
+      ...user,
+      role: newRole,
+    };
+    setUser(updatedUser);
+    localStorage.setItem('role', roleStr);
+    localStorage.setItem('praveshkavach_user', JSON.stringify(updatedUser));
+    if (sessionStorage.getItem('praveshkavach_user')) {
+      sessionStorage.setItem('praveshkavach_user', JSON.stringify(updatedUser));
+    }
+    console.log('[v0] Switched portal role to:', newRole);
+  };
+
   const getDashboardPath = (): string => {
     if (!user) return '/';
     return getDashboardPathForRole(user.role);
@@ -292,6 +311,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         register,
         logout,
+        switchRole,
         isAuthenticated: !!user,
         sessionToken,
         getDashboardPath,

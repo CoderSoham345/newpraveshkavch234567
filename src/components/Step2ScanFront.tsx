@@ -49,6 +49,7 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
     'ARMY_ID',
     'OTHER_GOVT_ID',
     'OTHER_IDENTITY_DOC',
+    'VISITOR_PASS',
   ];
 
   const getDocumentLabel = (type: DocumentType): string => {
@@ -73,6 +74,7 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
       'ARMY_ID': 'Army ID',
       'OTHER_GOVT_ID': 'Other Government ID',
       'OTHER_IDENTITY_DOC': 'Other Identity Document',
+      'VISITOR_PASS': 'Visitor Pass',
       'UNKNOWN': 'Other / Unrecognized Identity Document',
     };
     return labels[type] || type;
@@ -138,7 +140,7 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
           >
             {supportedDocTypes.map((type) => (
               <option key={type} value={type}>
-                {type}
+                {getDocumentLabel(type)}
               </option>
             ))}
           </select>

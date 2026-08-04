@@ -14,6 +14,8 @@ import {
   Smartphone
 } from 'lucide-react';
 import { FaceVerificationData } from '../types';
+import { requestCameraPermissions } from '../utils/nativeCameraPermissions';
+import { CameraPermissionModal } from './CameraPermissionModal';
 
 interface Step5CaptureFaceProps {
   idImage: string;
@@ -33,6 +35,8 @@ export const Step5CaptureFace: React.FC<Step5CaptureFaceProps> = ({
   const [capturedFaceUrl, setCapturedFaceUrl] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState<boolean>(false);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [cameraPermission, setCameraPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
+  const [permissionError, setPermissionError] = useState<string | null>(null);
 
   // Live quality metrics
   const [faceDetected, setFaceDetected] = useState<boolean>(true);
@@ -43,43 +47,54 @@ export const Step5CaptureFace: React.FC<Step5CaptureFaceProps> = ({
   const [livenessPassed, setLivenessPassed] = useState<boolean>(true);
 
   // Start/Switch camera stream (Default Selfie 'user' mode, with toggle)
-  useEffect(() => {
+  const startCamera = async () => {
     let activeStream: MediaStream | null = null;
-    async function startCamera() {
-      try {
-        if (stream) {
-          stream.getTracks().forEach((track) => track.stop());
-        }
-
-        let mediaStream: MediaStream;
-        try {
-          mediaStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { exact: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
-            audio: false,
-          });
-        } catch (e) {
-          // Fallback if exact constraint is not supported
-          mediaStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
-            audio: false,
-          });
-        }
-
-        activeStream = mediaStream;
-        setStream(mediaStream);
-        if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream;
-        }
-      } catch (err) {
-        console.warn('Camera error:', err);
+    try {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
       }
-    }
 
+      setPermissionError(null);
+      const permResult = await requestCameraPermissions();
+      if (!permResult.granted) {
+        setCameraPermission('denied');
+        setPermissionError(permResult.error || 'Camera permission denied in system settings.');
+        return;
+      }
+
+      let mediaStream: MediaStream;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        });
+      } catch (e) {
+        // Fallback if exact constraint is not supported
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        });
+      }
+
+      activeStream = mediaStream;
+      setStream(mediaStream);
+      setCameraPermission('granted');
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
+    } catch (err: any) {
+      console.warn('Camera error:', err);
+      setCameraPermission('denied');
+      setPermissionError(err?.message || 'Camera is unavailable or blocked.');
+    }
+  };
+
+  useEffect(() => {
     startCamera();
 
     return () => {
-      if (activeStream) {
-        activeStream.getTracks().forEach((track) => track.stop());
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
       }
     };
   }, [facingMode]);
@@ -320,6 +335,16 @@ export const Step5CaptureFace: React.FC<Step5CaptureFaceProps> = ({
         </div>
 
       </div>
+
+      <CameraPermissionModal
+        isOpen={cameraPermission === 'denied'}
+        errorMessage={permissionError}
+        onPermissionGranted={() => {
+          setCameraPermission('prompt');
+          startCamera();
+        }}
+        onCancel={onBackToDocs}
+      />
 
     </div>
   );

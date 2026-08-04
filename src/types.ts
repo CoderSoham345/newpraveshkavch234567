@@ -43,6 +43,7 @@ export type DocumentType =
   | 'ARMY_ID'
   | 'OTHER_GOVT_ID'
   | 'OTHER_IDENTITY_DOC'
+  | 'VISITOR_PASS'
   | 'UNKNOWN';
 
 export type WorkflowStep = 

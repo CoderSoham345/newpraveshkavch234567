@@ -30,7 +30,7 @@ import {
 } from '../types';
 
 export function SecurityGuardWorkflow() {
-  const { user, logout } = useAuth();
+  const { user, logout, switchRole } = useAuth();
   const [isMobileView, setIsMobileView] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'scanner' | 'history' | 'residents' | 'reports' | 'admin'>('dashboard');
   const [currentStep, setCurrentStep] = useState<WorkflowStep>(1);
@@ -441,8 +441,8 @@ export function SecurityGuardWorkflow() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       <Header
-        currentRole="SECURITY_GUARD"
-        setCurrentRole={() => {}}
+        currentRole={user?.role || 'SECURITY_GUARD'}
+        setCurrentRole={switchRole}
         isMobileView={isMobileView}
         setIsMobileView={setIsMobileView}
         pendingApprovalsCount={pendingApprovalsCount}
