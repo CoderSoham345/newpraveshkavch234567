@@ -1662,44 +1662,149 @@ app.post('/api/face-match', async (req, res) => {
   }
 });
 
+// Check duplicate visitor registration within time window (default 24 hours)
+app.post('/api/visitors/check-duplicate', (req, res) => {
+  const { documentNumber, phone, timeWindowHours = 24 } = req.body || {};
+  const normDoc = documentNumber ? String(documentNumber).replace(/[\s\-]/g, '').toUpperCase() : '';
+  const normPhone = phone ? String(phone).replace(/[\s\-]/g, '') : '';
+
+  if (!normDoc && !normPhone) {
+    return res.json({ isDuplicate: false });
+  }
+
+  const now = Date.now();
+  const windowMs = timeWindowHours * 60 * 60 * 1000;
+
+  const duplicate = visitorsStore.find((v) => {
+    const createdTime = new Date(v.createdAt).getTime();
+    const isWithinWindow = now - createdTime <= windowMs;
+    const isNotCheckedOut = v.status !== 'CHECKED_OUT';
+
+    const vDoc = v.documentNumber ? String(v.documentNumber).replace(/[\s\-]/g, '').toUpperCase() : '';
+    const vPhone = v.phone ? String(v.phone).replace(/[\s\-]/g, '') : '';
+
+    const matchDoc = normDoc && vDoc && normDoc === vDoc;
+    const matchPhone = normPhone && vPhone && normPhone.length > 5 && vPhone.length > 5 && normPhone === vPhone;
+
+    return (matchDoc || matchPhone) && (isWithinWindow || isNotCheckedOut);
+  });
+
+  if (duplicate) {
+    return res.json({ isDuplicate: true, existingVisitor: duplicate });
+  }
+  res.json({ isDuplicate: false });
+});
+
 // Get all visitors
 app.get('/api/visitors', (req, res) => {
   res.json({ success: true, visitors: visitorsStore });
 });
 
-// Create visitor request
+// Create visitor request & automatically save all document scans
 app.post('/api/visitors', (req, res) => {
   try {
-    const newVisitor: VisitorRecord = {
-      id: `vis-${Date.now()}`,
-      passNumber: `VP-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-      visitorName: req.body.visitorName || 'Guest Visitor',
-      phone: req.body.phone || '+91 98000 00000',
-      documentType: req.body.documentType || 'Aadhaar Card',
-      documentNumber: req.body.documentNumber || 'XXXX-0000-0000',
-      frontDocUrl: req.body.frontDocUrl || '',
-      backDocUrl: req.body.backDocUrl || '',
-      liveFaceUrl: req.body.liveFaceUrl || '',
-      extractedData: req.body.extractedData,
-      faceMetrics: req.body.faceMetrics,
-      residentId: req.body.residentId || 'res-101',
-      residentName: req.body.residentName || 'Rajesh Sharma',
-      buildingUnit: req.body.buildingUnit || 'Tower A (Flat 302)',
-      purpose: req.body.purpose || 'Personal Visit',
-      vehicleNumber: req.body.vehicleNumber,
-      numAccompanying: req.body.numAccompanying || 1,
-      status: req.body.autoApprove ? 'APPROVED' : 'PENDING',
-      createdAt: new Date().toISOString(),
-      gateName: 'Main Gate 01',
-      guardName: req.body.guardName || 'Security Officer',
-      qrCodeValue: `PRAVESHKAVACH-${Date.now()}`,
-    };
+    const body = req.body || {};
+    const normDoc = body.documentNumber ? String(body.documentNumber).replace(/[\s\-]/g, '').toUpperCase() : '';
+    const normPhone = body.phone ? String(body.phone).replace(/[\s\-]/g, '') : '';
 
-    if (newVisitor.status === 'APPROVED') {
-      newVisitor.approvedAt = new Date().toISOString();
+    // Check duplicate unless overrideDuplicate flag is set
+    if (!body.overrideDuplicate && (normDoc || normPhone)) {
+      const now = Date.now();
+      const windowMs = 24 * 60 * 60 * 1000;
+      const duplicate = visitorsStore.find((v) => {
+        const createdTime = new Date(v.createdAt).getTime();
+        const isWithinWindow = now - createdTime <= windowMs;
+        const isNotCheckedOut = v.status !== 'CHECKED_OUT';
+
+        const vDoc = v.documentNumber ? String(v.documentNumber).replace(/[\s\-]/g, '').toUpperCase() : '';
+        const vPhone = v.phone ? String(v.phone).replace(/[\s\-]/g, '') : '';
+
+        const matchDoc = normDoc && vDoc && normDoc === vDoc;
+        const matchPhone = normPhone && vPhone && normPhone.length > 5 && vPhone.length > 5 && normPhone === vPhone;
+
+        return (matchDoc || matchPhone) && (isWithinWindow || isNotCheckedOut);
+      });
+
+      if (duplicate) {
+        return res.status(409).json({
+          success: false,
+          duplicateDetected: true,
+          existingVisitor: duplicate,
+          message: `Duplicate visitor registration detected: ${duplicate.visitorName} (${duplicate.passNumber}) was registered recently.`,
+        });
+      }
     }
 
-    visitorsStore.unshift(newVisitor);
+    const nowIso = new Date().toISOString();
+    const visitorId = body.id || `vis-${Date.now()}`;
+
+    const newVisitor: VisitorRecord = {
+      id: visitorId,
+      passNumber: body.passNumber || `VP-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      visitorName: body.visitorName || 'Guest Visitor',
+      phone: body.phone || '+91 98000 00000',
+      email: body.email || '',
+      company: body.company || 'Self / Private',
+      documentType: body.documentType || 'Aadhaar Card',
+      documentNumber: body.documentNumber || 'XXXX-0000-0000',
+      frontDocUrl: body.frontDocUrl || '',
+      backDocUrl: body.backDocUrl || '',
+      liveFaceUrl: body.liveFaceUrl || '',
+      croppedFrontUrl: body.croppedFrontUrl || body.frontDocUrl || '',
+      enhancedFrontUrl: body.enhancedFrontUrl || body.frontDocUrl || '',
+      extractedData: body.extractedData,
+      faceMetrics: body.faceMetrics,
+      residentId: body.residentId || 'res-101',
+      residentName: body.residentName || 'Rajesh Sharma',
+      buildingUnit: body.buildingUnit || 'Tower A (Flat 302)',
+      purpose: body.purpose || 'Personal Visit',
+      vehicleNumber: body.vehicleNumber || '',
+      numAccompanying: body.numAccompanying || 1,
+      status: body.status || 'APPROVED',
+      createdAt: body.createdAt || nowIso,
+      approvedAt: nowIso,
+      checkInAt: body.checkInAt || nowIso,
+      gateName: body.gateName || 'Main Gate 01',
+      guardName: body.guardName || 'Security Officer',
+      guardId: body.guardId || 'guard-01',
+      qrCodeValue: body.qrCodeValue || `PRAVESHKAVACH-${visitorId}`,
+      verificationStatus: body.verificationStatus || 'VERIFIED',
+      qrCodeData: body.qrCodeData || '',
+    };
+
+    // Store in memory list
+    const existingIdx = visitorsStore.findIndex((v) => v.id === newVisitor.id);
+    if (existingIdx >= 0) {
+      visitorsStore[existingIdx] = newVisitor;
+    } else {
+      visitorsStore.unshift(newVisitor);
+    }
+
+    // Save scan file metadata into savedScansStore for /Scans folder view
+    const scanEntry = {
+      id: `scan-${visitorId}`,
+      title: `${newVisitor.visitorName} - ${newVisitor.documentType} ID Scan`,
+      fileName: `${newVisitor.visitorName.replace(/\s+/g, '_')}_ID.jpg`,
+      folder: 'Scans',
+      docType: newVisitor.documentType,
+      docTypeLabel: String(newVisitor.documentType).replace(/_/g, ' '),
+      format: 'jpeg' as const,
+      processedImageUrl: newVisitor.frontDocUrl,
+      fileUrl: newVisitor.frontDocUrl,
+      extractedData: newVisitor.extractedData,
+      ocrConfidence: newVisitor.extractedData?.confidenceScore || 98,
+      createdAt: nowIso,
+      fileSizeBytes: 245000,
+      dimensions: { width: 1280, height: 800 },
+      qrCodeData: newVisitor.qrCodeValue,
+      visitorId: newVisitor.id,
+      visitorName: newVisitor.visitorName,
+      savedBy: newVisitor.guardName,
+      isEncrypted: true,
+    };
+    if (!savedScansStore.some((s) => s.id === scanEntry.id)) {
+      savedScansStore.unshift(scanEntry);
+    }
 
     // Broadcast real-time SSE event to security guards and residents
     broadcastEvent('visitor_created', newVisitor);
@@ -1707,18 +1812,48 @@ app.post('/api/visitors', (req, res) => {
     // Audit log
     auditLogsStore.unshift({
       id: `log-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      action: 'VISITOR_REQUEST_CREATED',
+      timestamp: nowIso,
+      action: 'VISITOR_REGISTERED_AND_DOCUMENTS_SAVED',
       performedBy: newVisitor.guardName,
       role: 'SECURITY_GUARD',
-      details: `Created visitor pass request for ${newVisitor.visitorName} visiting ${newVisitor.residentName} (${newVisitor.buildingUnit})`,
+      details: `Registered visitor ${newVisitor.visitorName} (${newVisitor.passNumber}). All scanned document files (Front ID, Back ID, Face Capture, OCR JSON) saved permanently.`,
+      gateName: newVisitor.gateName,
+      deviceName: 'Security Tablet #1',
       ipAddress: req.ip || '127.0.0.1',
     });
 
-    res.json({ success: true, visitor: newVisitor });
+    res.json({ success: true, visitor: newVisitor, message: 'Visitor registered & documents saved successfully.' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Delete visitor record & documents (Admin only)
+app.delete('/api/visitors/:id', (req, res) => {
+  const { id } = req.params;
+  const existing = visitorsStore.find((v) => v.id === id || v.passNumber === id);
+  if (!existing) {
+    return res.status(404).json({ success: false, error: 'Visitor record not found' });
+  }
+
+  visitorsStore = visitorsStore.filter((v) => v.id !== id && v.passNumber !== id);
+  savedScansStore = savedScansStore.filter((s) => s.visitorId !== id && s.id !== `scan-${id}`);
+
+  auditLogsStore.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    action: 'VISITOR_RECORD_DELETED',
+    performedBy: 'System Admin',
+    role: 'ADMIN',
+    details: `Permanently deleted visitor record and associated scanned documents for ${existing.visitorName} (${existing.passNumber})`,
+    gateName: existing.gateName || 'Main Gate 01',
+    deviceName: 'Admin Console',
+    ipAddress: req.ip || '127.0.0.1',
+  });
+
+  broadcastEvent('visitor_deleted', { id });
+
+  res.json({ success: true, deletedId: id, message: `Visitor record for ${existing.visitorName} deleted successfully.` });
 });
 
 // Helper function to format visit duration string

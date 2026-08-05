@@ -174,7 +174,16 @@ export interface VisitorRecord {
   visitDurationMinutes?: number;
   gateName: string;
   guardName: string;
+  guardId?: string;
   qrCodeValue: string;
+  qrCodeData?: string;
+  email?: string;
+  company?: string;
+  verificationStatus?: 'VERIFIED' | 'FAILED' | 'MANUAL_REVIEW';
+  croppedFrontUrl?: string;
+  enhancedFrontUrl?: string;
+  croppedBackUrl?: string;
+  enhancedBackUrl?: string;
   dob?: string;
   age?: string;
   gender?: string;

@@ -28,6 +28,14 @@ import {
   AuditLogItem, 
   AnalyticsStats 
 } from '../types';
+import { 
+  saveVisitorWithDocuments, 
+  checkDuplicateRegistration, 
+  syncOfflineQueue, 
+  UploadProgressStatus, 
+  SaveVisitorPayload 
+} from '../utils/documentStorage';
+import { AlertTriangle, CheckCircle2, CloudUpload, RefreshCw, X, HardDrive } from 'lucide-react';
 
 export function SecurityGuardWorkflow() {
   const { user, logout, switchRole } = useAuth();
@@ -53,6 +61,32 @@ export function SecurityGuardWorkflow() {
     purposeBreakdown: [],
   });
 
+  // Additional Form & Document Storage States
+  const [visitorEmail, setVisitorEmail] = useState<string>('');
+  const [visitorCompany, setVisitorCompany] = useState<string>('');
+  const [uploadProgress, setUploadProgress] = useState<UploadProgressStatus | null>(null);
+  const [duplicateModal, setDuplicateModal] = useState<{ show: boolean; existingVisitor?: VisitorRecord; payload?: SaveVisitorPayload } | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  // Auto-sync offline queue on reconnect
+  useEffect(() => {
+    const handleOnline = async () => {
+      console.log('[Network] Internet restored. Syncing offline visitor queue...');
+      const result = await syncOfflineQueue();
+      if (result.syncedCount > 0) {
+        setToastMessage(`✔ Offline Auto-sync: ${result.syncedCount} visitor scan record(s) uploaded successfully.`);
+        // Refresh visitors list
+        const res = await safeFetch('/api/visitors');
+        if (res.ok && Array.isArray(res.data?.visitors)) {
+          setVisitors(res.data.visitors);
+        }
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, []);
   // Workflow state
   const [selectedDocType, setSelectedDocType] = useState<DocumentType>('PAN_CARD');
   const [frontDocImage, setFrontDocImage] = useState<string>('');
@@ -342,12 +376,43 @@ export function SecurityGuardWorkflow() {
     setCurrentStep(6);
   };
 
+  const executeSaveRegistration = async (payload: SaveVisitorPayload) => {
+    setIsSaving(true);
+    try {
+      const result = await saveVisitorWithDocuments(payload, (status) => {
+        setUploadProgress(status);
+      });
+
+      if (result.success && result.visitor) {
+        setVisitors((prev) => [result.visitor, ...prev.filter((v) => v.id !== result.visitor.id)]);
+        setCurrentVisitorRecord(result.visitor);
+        setToastMessage('✔ Visitor Registered Successfully | ✔ Scanned Documents Saved');
+        
+        setTimeout(() => {
+          setUploadProgress(null);
+          setIsSaving(false);
+          setCurrentStep(8); // Advance to Pass & Summary
+        }, 1200);
+      }
+    } catch (err: any) {
+      console.error('Registration save error:', err);
+      setIsSaving(false);
+      setUploadProgress({
+        step: 'ERROR',
+        progressPercent: 0,
+        message: 'Failed to save documents. Please check connection and retry.',
+      });
+    }
+  };
+
   const handleSendRequest = async () => {
     const resident = residents.find((r) => r.id === selectedResidentId) || residents[0];
 
-    const payload = {
+    const payload: SaveVisitorPayload = {
       visitorName: extractedData.fullName,
       phone: visitorPhone,
+      email: visitorEmail || `${extractedData.fullName.toLowerCase().replace(/\s+/g, '')}@gmail.com`,
+      company: visitorCompany || extractedData.companyName || 'Self / Private',
       documentType: selectedDocType,
       documentNumber: extractedData.documentNumber,
       frontDocUrl: frontDocImage,
@@ -361,53 +426,24 @@ export function SecurityGuardWorkflow() {
       purpose: visitPurpose,
       vehicleNumber,
       numAccompanying,
+      guardName: user?.name || 'Security Officer',
+      guardId: user?.id || 'guard-01',
+      gateName: user?.gate || 'Main Gate 01',
+      verificationStatus: 'VERIFIED',
     };
 
-    try {
-      const response = await safeFetch('/api/visitors', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+    // Check duplicate visitor within 24 hours
+    const dupCheck = checkDuplicateRegistration(visitors, payload.documentNumber, payload.phone, 24);
+    if (dupCheck.isDuplicate && dupCheck.existingVisitor) {
+      setDuplicateModal({
+        show: true,
+        existingVisitor: dupCheck.existingVisitor,
+        payload,
       });
-      if (response.ok && response.data?.visitor) {
-        setCurrentVisitorRecord(response.data.visitor);
-        setVisitors((prev) => [response.data.visitor, ...prev]);
-        setCurrentStep(response.data.visitor.status === 'APPROVED' ? 8 : 7);
-        return;
-      }
-    } catch (err) {
-      console.warn('[v0] Server error, using fallback');
+      return;
     }
 
-    // Fallback
-    const newRecord: VisitorRecord = {
-      id: `vis-${Date.now()}`,
-      passNumber: `VP-${Math.floor(1000 + Math.random() * 9000)}`,
-      visitorName: extractedData.fullName,
-      phone: visitorPhone,
-      documentType: selectedDocType,
-      documentNumber: extractedData.documentNumber,
-      frontDocUrl: frontDocImage,
-      backDocUrl: backDocImage,
-      liveFaceUrl: liveFaceImage,
-      extractedData,
-      faceMetrics,
-      residentId: resident.id,
-      residentName: resident.name,
-      buildingUnit: `${resident.building} (${resident.flatNumber})`,
-      purpose: visitPurpose,
-      vehicleNumber,
-      numAccompanying,
-      status: 'PENDING',
-      createdAt: new Date().toISOString(),
-      gateName: user?.gate || 'Main Gate',
-      guardName: user?.name || 'Security Officer',
-      qrCodeValue: `PRAVESH-${Date.now()}`,
-    };
-
-    setCurrentVisitorRecord(newRecord);
-    setVisitors((prev) => [newRecord, ...prev]);
-    setCurrentStep(7);
+    await executeSaveRegistration(payload);
   };
 
   const handleApproveStatus = async () => {
@@ -605,8 +641,13 @@ export function SecurityGuardWorkflow() {
                   setNumAccompanying={setNumAccompanying}
                   visitorPhone={visitorPhone}
                   setVisitorPhone={setVisitorPhone}
+                  visitorEmail={visitorEmail}
+                  setVisitorEmail={setVisitorEmail}
+                  visitorCompany={visitorCompany}
+                  setVisitorCompany={setVisitorCompany}
                   onSendRequest={handleSendRequest}
                   onBackToFace={() => setCurrentStep(5)}
+                  isSaving={isSaving}
                 />
               )}
               {currentStep === 7 && currentVisitorRecord && (
@@ -679,6 +720,114 @@ export function SecurityGuardWorkflow() {
       </footer>
 
       <AIChatbot currentPage={activeTab} currentRole="SECURITY_GUARD" />
+
+      {/* Upload Progress Overlay */}
+      {uploadProgress && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center mx-auto text-cyan-400">
+              <CloudUpload className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Saving Visitor & Document Scans</h3>
+              <p className="text-xs text-slate-400 mt-1">{uploadProgress.message}</p>
+            </div>
+            {/* Progress Bar */}
+            <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden border border-slate-700">
+              <div 
+                className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full transition-all duration-300"
+                style={{ width: `${uploadProgress.progressPercent}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[11px] text-slate-400 font-mono">
+              <span>{uploadProgress.step}</span>
+              <span>{uploadProgress.progressPercent}%</span>
+            </div>
+            {uploadProgress.isOffline && (
+              <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] p-2.5 rounded-lg flex items-center gap-2 text-left">
+                <HardDrive className="w-4 h-4 shrink-0 text-amber-400" />
+                <span>Saved to local Capacitor filesystem queue. Auto-syncs when online.</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Prevention Alert Modal */}
+      {duplicateModal && duplicateModal.show && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-amber-400 border-b border-slate-800 pb-3">
+              <AlertTriangle className="w-6 h-6 shrink-0" />
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Duplicate Registration Alert</h3>
+                <p className="text-[11px] text-amber-300">Matching visitor found within 24 hours</p>
+              </div>
+            </div>
+
+            {duplicateModal.existingVisitor && (
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Visitor Name:</span>
+                  <span className="font-bold text-white">{duplicateModal.existingVisitor.visitorName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Pass Number:</span>
+                  <span className="font-mono text-cyan-400">{duplicateModal.existingVisitor.passNumber}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Document No:</span>
+                  <span className="font-mono text-slate-300">{duplicateModal.existingVisitor.documentNumber}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Previous Entry:</span>
+                  <span className="text-slate-300">{new Date(duplicateModal.existingVisitor.createdAt).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Current Status:</span>
+                  <span className="font-bold text-emerald-400">{duplicateModal.existingVisitor.status}</span>
+                </div>
+              </div>
+            )}
+
+            <p className="text-xs text-slate-300">
+              This visitor was recently registered at the gate. Would you like to issue a new pass anyway or view the existing pass?
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                onClick={() => setDuplicateModal(null)}
+                className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (duplicateModal.payload) {
+                    const payload = { ...duplicateModal.payload, overrideDuplicate: true };
+                    setDuplicateModal(null);
+                    await executeSaveRegistration(payload);
+                  }
+                }}
+                className="py-2.5 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold text-xs"
+              >
+                Override & Re-Register
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-950 border border-emerald-500/50 text-emerald-200 px-4 py-3 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-3 animate-slide-up">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+          <button onClick={() => setToastMessage(null)} className="text-emerald-400 hover:text-white ml-2">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

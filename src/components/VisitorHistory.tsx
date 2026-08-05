@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { VisitorRecord, VisitorStatus, AuditLogItem } from '../types';
 import { SavedScansList } from './SavedScansList';
+import { printVisitorPassWindow, downloadVisitorPackage } from '../utils/documentStorage';
 
 interface VisitorHistoryProps {
   visitors: VisitorRecord[];
@@ -441,7 +442,23 @@ export const VisitorHistory: React.FC<VisitorHistoryProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => printVisitorPassWindow(profileModalVisitor)}
+                  className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold text-xs shadow-md flex items-center gap-1.5"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>PRINT PASS</span>
+                </button>
+
+                <button
+                  onClick={() => downloadVisitorPackage(profileModalVisitor)}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs flex items-center gap-1.5"
+                >
+                  <Download className="w-4 h-4 text-cyan-400" />
+                  <span>DOWNLOAD PACKAGE</span>
+                </button>
+
                 {(profileModalVisitor.status === 'CHECKED_IN' || profileModalVisitor.status === 'APPROVED') && onMarkExit && (
                   <button
                     onClick={() => {
@@ -478,18 +495,22 @@ export const VisitorHistory: React.FC<VisitorHistoryProps> = ({
                 <p className="font-bold text-cyan-400 uppercase tracking-wider text-[10px]">Visitor Identity Details</p>
                 <p><span className="text-slate-400">Full Name:</span> <strong className="text-white">{profileModalVisitor.visitorName}</strong></p>
                 <p><span className="text-slate-400">Phone Number:</span> <strong className="text-white">{profileModalVisitor.phone}</strong></p>
+                {profileModalVisitor.email && <p><span className="text-slate-400">Email:</span> <strong className="text-cyan-300">{profileModalVisitor.email}</strong></p>}
+                {profileModalVisitor.company && <p><span className="text-slate-400">Company:</span> <strong className="text-white">{profileModalVisitor.company}</strong></p>}
                 <p><span className="text-slate-400">Document Type:</span> <strong className="text-white">{profileModalVisitor.documentType}</strong></p>
                 <p><span className="text-slate-400">Document Number:</span> <strong className="text-white font-mono">{profileModalVisitor.documentNumber}</strong></p>
                 {profileModalVisitor.address && <p><span className="text-slate-400">Address:</span> <strong className="text-white">{profileModalVisitor.address}</strong></p>}
               </div>
 
               <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-2 text-xs">
-                <p className="font-bold text-cyan-400 uppercase tracking-wider text-[10px]">Host & Visit Information</p>
+                <p className="font-bold text-cyan-400 uppercase tracking-wider text-[10px]">Host & Gate Security Audit</p>
                 <p><span className="text-slate-400">Resident Host:</span> <strong className="text-white">{profileModalVisitor.residentName}</strong></p>
                 <p><span className="text-slate-400">Building Unit:</span> <strong className="text-white">{profileModalVisitor.buildingUnit}</strong></p>
                 <p><span className="text-slate-400">Purpose of Visit:</span> <strong className="text-white">{profileModalVisitor.purpose}</strong></p>
+                <p><span className="text-slate-400">Entry Gate & Guard:</span> <strong className="text-white">{profileModalVisitor.gateName} ({profileModalVisitor.guardName})</strong></p>
                 <p><span className="text-slate-400">Check-in Time:</span> <strong className="text-emerald-400 font-mono">{profileModalVisitor.checkInAt ? new Date(profileModalVisitor.checkInAt).toLocaleString() : 'N/A'}</strong></p>
                 <p><span className="text-slate-400">Check-out Time:</span> <strong className="text-cyan-400 font-mono">{profileModalVisitor.checkOutAt ? new Date(profileModalVisitor.checkOutAt).toLocaleString() : 'N/A'}</strong></p>
+                <p><span className="text-slate-400">Verification Status:</span> <strong className="text-emerald-400 font-bold uppercase">{profileModalVisitor.verificationStatus || 'VERIFIED'}</strong></p>
               </div>
             </div>
 

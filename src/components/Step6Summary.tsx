@@ -34,8 +34,13 @@ interface Step6SummaryProps {
   setNumAccompanying: (n: number) => void;
   visitorPhone: string;
   setVisitorPhone: (ph: string) => void;
+  visitorEmail?: string;
+  setVisitorEmail?: (email: string) => void;
+  visitorCompany?: string;
+  setVisitorCompany?: (company: string) => void;
   onSendRequest: () => void;
   onBackToFace: () => void;
+  isSaving?: boolean;
 }
 
 export const Step6Summary: React.FC<Step6SummaryProps> = ({
@@ -55,8 +60,13 @@ export const Step6Summary: React.FC<Step6SummaryProps> = ({
   setNumAccompanying,
   visitorPhone,
   setVisitorPhone,
+  visitorEmail = '',
+  setVisitorEmail,
+  visitorCompany = '',
+  setVisitorCompany,
   onSendRequest,
   onBackToFace,
+  isSaving = false,
 }) => {
   const [residentSearchTerm, setResidentSearchTerm] = useState<string>('');
 
@@ -177,13 +187,37 @@ export const Step6Summary: React.FC<Step6SummaryProps> = ({
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <span className="text-slate-400 font-semibold block text-[11px] uppercase">Phone Number</span>
+                <input
+                  type="text"
+                  value={visitorPhone}
+                  onChange={(e) => setVisitorPhone(e.target.value)}
+                  placeholder="+91 98000 00000"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-white mt-1 focus:border-cyan-400 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <span className="text-slate-400 font-semibold block text-[11px] uppercase">Email Address</span>
+                <input
+                  type="email"
+                  value={visitorEmail}
+                  onChange={(e) => setVisitorEmail && setVisitorEmail(e.target.value)}
+                  placeholder="visitor@gmail.com"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-white mt-1 focus:border-cyan-400 focus:outline-none"
+                />
+              </div>
+            </div>
+
             <div>
-              <span className="text-slate-400 font-semibold block text-[11px] uppercase">Phone Number</span>
+              <span className="text-slate-400 font-semibold block text-[11px] uppercase">Organization / Company</span>
               <input
                 type="text"
-                value={visitorPhone}
-                onChange={(e) => setVisitorPhone(e.target.value)}
-                placeholder="+91 98000 00000"
+                value={visitorCompany}
+                onChange={(e) => setVisitorCompany && setVisitorCompany(e.target.value)}
+                placeholder="Company / Self / Independent"
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-white mt-1 focus:border-cyan-400 focus:outline-none"
               />
             </div>
@@ -293,14 +327,15 @@ export const Step6Summary: React.FC<Step6SummaryProps> = ({
           <div className="pt-3">
             <button
               onClick={onSendRequest}
-              className="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-slate-950 font-black text-sm shadow-xl shadow-cyan-500/25 flex items-center justify-center gap-2.5 transition-transform hover:scale-[1.01]"
-              id="btn-send-request-to-resident"
+              disabled={isSaving}
+              className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-600 hover:from-emerald-400 hover:to-cyan-500 text-slate-950 font-black text-sm shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2.5 transition-transform hover:scale-[1.01] disabled:opacity-50"
+              id="btn-complete-registration-save"
             >
-              <Send className="w-5 h-5 text-slate-950" />
-              <span>SEND REQUEST TO RESIDENT</span>
+              <CheckCircle2 className="w-5 h-5 text-slate-950" />
+              <span>{isSaving ? 'SAVING DOCUMENTS & REGISTERING...' : 'COMPLETE REGISTRATION & SAVE DOCUMENTS'}</span>
             </button>
             <p className="text-[10px] text-slate-400 text-center mt-2">
-              Instant real-time alert will be dispatches via Socket, Telegram, WhatsApp & Push notification.
+              All scanned images, OCR metadata, biometric face photo & visitor details will be permanently saved.
             </p>
           </div>
 
