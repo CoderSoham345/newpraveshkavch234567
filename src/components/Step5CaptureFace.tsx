@@ -14,7 +14,7 @@ import {
   Smartphone
 } from 'lucide-react';
 import { FaceVerificationData } from '../types';
-import { requestCameraPermissions } from '../utils/nativeCameraPermissions';
+import { requestCameraPermissions, takeNativePhoto } from '../utils/nativeCameraPermissions';
 import { CameraPermissionModal } from './CameraPermissionModal';
 
 interface Step5CaptureFaceProps {
@@ -48,7 +48,6 @@ export const Step5CaptureFace: React.FC<Step5CaptureFaceProps> = ({
 
   // Start/Switch camera stream (Default Selfie 'user' mode, with toggle)
   const startCamera = async () => {
-    let activeStream: MediaStream | null = null;
     try {
       if (stream) {
         stream.getTracks().forEach((track) => track.stop());
@@ -62,30 +61,37 @@ export const Step5CaptureFace: React.FC<Step5CaptureFaceProps> = ({
         return;
       }
 
-      let mediaStream: MediaStream;
+      setCameraPermission('granted');
+
+      let mediaStream: MediaStream | null = null;
       try {
         mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { exact: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false,
         });
       } catch (e) {
-        // Fallback if exact constraint is not supported
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: false,
-        });
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: facingMode },
+            audio: false,
+          });
+        } catch (e2) {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        }
       }
 
-      activeStream = mediaStream;
-      setStream(mediaStream);
-      setCameraPermission('granted');
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
+      if (mediaStream) {
+        setStream(mediaStream);
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
+        }
       }
     } catch (err: any) {
-      console.warn('Camera error:', err);
-      setCameraPermission('denied');
-      setPermissionError(err?.message || 'Camera is unavailable or blocked.');
+      console.warn('Camera stream error:', err);
+      setPermissionError(err?.message || 'Camera stream is unavailable or blocked.');
     }
   };
 

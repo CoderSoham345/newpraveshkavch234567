@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Camera, ShieldAlert, RefreshCw } from 'lucide-react';
 import { requestCameraPermissions } from '../utils/nativeCameraPermissions';
 
@@ -17,6 +17,12 @@ export const CameraPermissionModal: React.FC<Props> = ({
 }) => {
   const [isRequesting, setIsRequesting] = useState(false);
   const [error, setError] = useState<string | null>(errorMessage || null);
+
+  useEffect(() => {
+    if (errorMessage) {
+      setError(errorMessage);
+    }
+  }, [errorMessage]);
 
   if (!isOpen) return null;
 

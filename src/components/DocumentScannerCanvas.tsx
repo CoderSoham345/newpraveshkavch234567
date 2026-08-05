@@ -32,7 +32,7 @@ import {
   ScanValidationResult,
   DetectedQuad
 } from '../utils/cvEngine';
-import { requestCameraPermissions } from '../utils/nativeCameraPermissions';
+import { requestCameraPermissions, takeNativePhoto } from '../utils/nativeCameraPermissions';
 import { CameraPermissionModal } from './CameraPermissionModal';
 
 interface DocumentScannerCanvasProps {
@@ -86,7 +86,9 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
         return;
       }
 
-      let mediaStream: MediaStream;
+      setCameraPermission('granted');
+
+      let mediaStream: MediaStream | null = null;
       try {
         mediaStream = await navigator.mediaDevices.getUserMedia({
           video: { 
@@ -98,26 +100,39 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
           audio: false,
         });
       } catch (e) {
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: false,
-        });
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false,
+          });
+        } catch (e2) {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        }
       }
 
-      setStream(mediaStream);
-      setCameraPermission('granted');
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
+      if (mediaStream) {
+        setStream(mediaStream);
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
+        }
       }
     } catch (err: any) {
-      console.warn('Camera Access Error:', err);
-      setCameraPermission('denied');
+      console.warn('Camera Stream Access Error:', err);
       setErrorMessage(
         err.name === 'NotAllowedError'
-          ? 'Camera permission denied. Please allow camera access in settings.'
+          ? 'Camera stream blocked by browser or OS setting.'
           : 'Camera hardware is busy or unavailable.'
       );
+    }
+  };
+
+  const handleNativeCameraCapture = async () => {
+    const photoUrl = await takeNativePhoto();
+    if (photoUrl) {
+      onCaptured(photoUrl, null);
     }
   };
 
@@ -624,6 +639,16 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
               style={{ width: `${autoCaptureProgress}%` }}
             />
           </div>
+        )}
+
+        {errorMessage && (
+          <button
+            onClick={handleNativeCameraCapture}
+            className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold text-xs shadow-lg flex items-center gap-2 cursor-pointer"
+          >
+            <Camera className="w-4 h-4" />
+            <span>Take Photo with Native Camera</span>
+          </button>
         )}
 
         <button

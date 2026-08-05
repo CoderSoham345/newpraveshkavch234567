@@ -4,15 +4,15 @@ import { LoginPage } from './pages/LoginPage';
 import { SecurityGuardWorkflow } from './pages/SecurityGuardWorkflow';
 import { ResidentDashboardPage } from './pages/ResidentDashboardPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
-import { requestCameraPermissions } from './utils/nativeCameraPermissions';
+import { checkCameraPermissions } from './utils/nativeCameraPermissions';
 
 export default function App() {
-  const { isAuthenticated, user, isInitialized, isLoading } = useAuth();
+  const { isAuthenticated, user, isInitialized } = useAuth();
 
-  // Immediately request camera permissions on launch for Android PWA / native Capacitor app
+  // Non-blocking check for camera permissions status on initial launch
   useEffect(() => {
-    requestCameraPermissions().catch((err) => {
-      console.warn('Initial camera permission request on app launch:', err);
+    checkCameraPermissions().catch((err) => {
+      console.warn('Initial camera permission check:', err);
     });
   }, []);
 
