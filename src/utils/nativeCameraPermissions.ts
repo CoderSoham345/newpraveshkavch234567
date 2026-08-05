@@ -1,4 +1,5 @@
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 
 export interface CameraPermissionState {
@@ -8,8 +9,26 @@ export interface CameraPermissionState {
   error?: string;
 }
 
-// In-flight promise lock to prevent duplicate concurrent Capacitor permission requests
+// Single-flight lock to prevent parallel promise conflicts
 let pendingRequestPromise: Promise<CameraPermissionState> | null = null;
+
+/**
+ * Opens system app settings using Capacitor App API.
+ */
+export async function openAppSettings(): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      if (typeof (App as any).openSettings === 'function') {
+        await (App as any).openSettings();
+      } else if (typeof (App as any).openAppSettings === 'function') {
+        await (App as any).openAppSettings();
+      }
+      return;
+    } catch (err) {
+      console.warn('Capacitor App settings error:', err);
+    }
+  }
+}
 
 /**
  * Checks current camera permissions on native Android or Web without prompting user.
@@ -18,9 +37,10 @@ export async function checkCameraPermissions(): Promise<CameraPermissionState> {
   if (Capacitor.isNativePlatform()) {
     try {
       const status = await Camera.checkPermissions();
-      if (status.camera === 'granted') {
+      const state = status.camera;
+      if (state === 'granted') {
         return { granted: true, denied: false, prompt: false };
-      } else if (status.camera === 'denied') {
+      } else if (state === 'denied') {
         return { granted: false, denied: true, prompt: false };
       } else {
         return { granted: false, denied: false, prompt: true };
@@ -40,7 +60,7 @@ export async function checkCameraPermissions(): Promise<CameraPermissionState> {
         return { granted: false, denied: true, prompt: false };
       }
     } catch (e) {
-      // Ignore
+      // Ignore query errors in non-standard browsers
     }
   }
 
@@ -49,7 +69,7 @@ export async function checkCameraPermissions(): Promise<CameraPermissionState> {
 
 /**
  * Requests camera permission from Capacitor / Android OS or Web navigator.
- * Deduplicates parallel calls to avoid duplicate OS permission dialog conflicts.
+ * Triggers native Android ActivityCompat permission dialog.
  */
 export async function requestCameraPermissions(): Promise<CameraPermissionState> {
   if (pendingRequestPromise) {
@@ -58,24 +78,26 @@ export async function requestCameraPermissions(): Promise<CameraPermissionState>
 
   pendingRequestPromise = (async () => {
     try {
-      // 1. Check if already granted first
+      // Check if already granted
       const current = await checkCameraPermissions();
       if (current.granted) {
         return current;
       }
 
-      // 2. Request native permission on Android / iOS
+      // Request native permission via Capacitor Camera plugin
       if (Capacitor.isNativePlatform()) {
         try {
           const status = await Camera.requestPermissions({ permissions: ['camera'] });
-          if (status.camera === 'granted') {
+          const cameraState = status.camera;
+
+          if (cameraState === 'granted') {
             return { granted: true, denied: false, prompt: false };
           } else {
             return {
               granted: false,
               denied: true,
               prompt: false,
-              error: 'Camera permission denied in Android system dialog. Please grant camera permission in system settings.',
+              error: 'Camera permission was denied in Android system dialog.',
             };
           }
         } catch (err: any) {
@@ -84,12 +106,12 @@ export async function requestCameraPermissions(): Promise<CameraPermissionState>
             granted: false,
             denied: true,
             prompt: false,
-            error: err?.message || 'Failed to request camera permission.',
+            error: err?.message || 'Failed to request camera permission via native bridge.',
           };
         }
       }
 
-      // 3. Web request fallback
+      // Web fallback
       if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -115,7 +137,7 @@ export async function requestCameraPermissions(): Promise<CameraPermissionState>
 }
 
 /**
- * Fallback to capture a photo directly via Capacitor Native Camera plugin UI.
+ * Opens native camera UI directly using Capacitor Camera plugin.
  */
 export async function takeNativePhoto(): Promise<string | null> {
   if (!Capacitor.isNativePlatform()) return null;

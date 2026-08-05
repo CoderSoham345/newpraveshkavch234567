@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, Camera, ShieldAlert, RefreshCw } from 'lucide-react';
-import { requestCameraPermissions } from '../utils/nativeCameraPermissions';
+import { AlertTriangle, Camera, ShieldAlert, RefreshCw, Settings } from 'lucide-react';
+import { requestCameraPermissions, openAppSettings } from '../utils/nativeCameraPermissions';
 
 interface Props {
   isOpen: boolean;
@@ -17,6 +17,7 @@ export const CameraPermissionModal: React.FC<Props> = ({
 }) => {
   const [isRequesting, setIsRequesting] = useState(false);
   const [error, setError] = useState<string | null>(errorMessage || null);
+  const [isDenied, setIsDenied] = useState(false);
 
   useEffect(() => {
     if (errorMessage) {
@@ -29,18 +30,26 @@ export const CameraPermissionModal: React.FC<Props> = ({
   const handleGrantPermission = async () => {
     setIsRequesting(true);
     setError(null);
+    setIsDenied(false);
+
     try {
       const res = await requestCameraPermissions();
       if (res.granted) {
         onPermissionGranted();
       } else {
-        setError(res.error || 'Camera permission was denied. Please allow camera access in Android system settings.');
+        setIsDenied(true);
+        setError(res.error || 'Camera permission is required. Please allow camera access in Android system settings.');
       }
     } catch (err: any) {
+      setIsDenied(true);
       setError(err?.message || 'Failed to request camera permission.');
     } finally {
       setIsRequesting(false);
     }
+  };
+
+  const handleOpenSettings = async () => {
+    await openAppSettings();
   };
 
   return (
@@ -55,7 +64,7 @@ export const CameraPermissionModal: React.FC<Props> = ({
         </h3>
 
         <p className="text-xs text-slate-300 leading-relaxed">
-          PraveshKavach™ needs access to your device camera to scan visitor identity documents and perform biometric face verification.
+          PraveshKavach™ requires access to your device camera to scan visitor identity documents and perform face verification.
         </p>
 
         {error && (
@@ -65,22 +74,12 @@ export const CameraPermissionModal: React.FC<Props> = ({
           </div>
         )}
 
-        <div className="w-full pt-2 flex flex-col sm:flex-row gap-3">
-          {onCancel && (
-            <button
-              type="button"
-              onClick={onCancel}
-              className="w-full sm:w-1/2 py-3 px-4 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer"
-            >
-              Cancel
-            </button>
-          )}
-
+        <div className="w-full pt-2 flex flex-col gap-2.5">
           <button
             type="button"
             onClick={handleGrantPermission}
             disabled={isRequesting}
-            className={`w-full ${onCancel ? 'sm:w-1/2' : ''} py-3 px-4 rounded-xl text-xs font-bold bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg border border-cyan-400/30 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95`}
+            className="w-full py-3 px-4 rounded-xl text-xs font-bold bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg border border-cyan-400/30 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
           >
             {isRequesting ? (
               <>
@@ -94,6 +93,27 @@ export const CameraPermissionModal: React.FC<Props> = ({
               </>
             )}
           </button>
+
+          {isDenied && (
+            <button
+              type="button"
+              onClick={handleOpenSettings}
+              className="w-full py-3 px-4 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <Settings className="w-4 h-4 text-cyan-400" />
+              <span>Open System Settings</span>
+            </button>
+          )}
+
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold bg-slate-800/60 hover:bg-slate-800 text-slate-400 transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+          )}
         </div>
       </div>
     </div>
