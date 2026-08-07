@@ -89,6 +89,7 @@ export function SecurityGuardWorkflow() {
   }, []);
   // Workflow state
   const [selectedDocType, setSelectedDocType] = useState<DocumentType>('PAN_CARD');
+  const [aadhaarSettings, setAadhaarSettings] = useState<{ useMaskedAadhaar: boolean }>({ useMaskedAadhaar: true });
   const [frontDocImage, setFrontDocImage] = useState<string>('');
   const [backDocImage, setBackDocImage] = useState<string>('');
   const [liveFaceImage, setLiveFaceImage] = useState<string>('');
@@ -595,6 +596,8 @@ export function SecurityGuardWorkflow() {
                 <Step2ScanFront
                   selectedDocType={selectedDocType}
                   setSelectedDocType={setSelectedDocType}
+                  aadhaarSettings={aadhaarSettings}
+                  onUpdateAadhaarSettings={setAadhaarSettings}
                   onCaptureCompleted={handleFrontCaptureCompleted}
                   onCancel={() => { setActiveTab('dashboard'); setCurrentStep(1); }}
                 />

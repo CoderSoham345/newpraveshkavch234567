@@ -64,6 +64,35 @@ export type VisitorStatus =
   | 'CHECKED_OUT'
   | 'CANCELLED';
 
+export type VisibilityMode = 'VISIBLE' | 'HIDDEN' | 'MASKED';
+
+export interface AadhaarPrivacySettings {
+  useMaskedAadhaar: boolean; // true = Masked Aadhaar (XXXX XXXX 1234), false = Full Aadhaar
+}
+
+export interface VisitorPrivacyPreferences {
+  fullName: VisibilityMode;
+  photo: VisibilityMode;
+  documentNumber: VisibilityMode;
+  qrCode: VisibilityMode;
+  address: VisibilityMode;
+  dob: VisibilityMode;
+  gender: VisibilityMode;
+  fatherName: VisibilityMode;
+  documentImage: VisibilityMode;
+}
+
+export interface AdminPrivacyConfig {
+  requireMaskedAadhaar: boolean;
+  allowFullAadhaar: boolean;
+  deleteScannedDocAfterVerification: boolean;
+  encryptIdentityNumbers: boolean;
+  storeOnlyLast4Digits: boolean;
+  autoDeleteAfter24Hours: boolean;
+  autoDeleteAfterExit: boolean;
+  auditAccessLogs: boolean;
+}
+
 export interface FieldWithConfidence {
   value: string;
   confidence: number; // 0 - 100
@@ -86,6 +115,12 @@ export interface ExtractedDocData {
   confidenceScore: number; // 0 - 100
   lowConfidenceFields: string[];
   
+  // Privacy Preferences
+  aadhaarPrivacy?: AadhaarPrivacySettings;
+  privacyPreferences?: VisitorPrivacyPreferences;
+  isMaskedAadhaar?: boolean;
+  maskedDocumentNumber?: string;
+
   // Specific parsed fields for each document type
   age?: string;
   state?: string;
@@ -179,6 +214,10 @@ export interface VisitorRecord {
   qrCodeData?: string;
   email?: string;
   company?: string;
+  privacyPreferences?: VisitorPrivacyPreferences;
+  aadhaarPrivacy?: AadhaarPrivacySettings;
+  isMaskedAadhaar?: boolean;
+  maskedDocumentNumber?: string;
   verificationStatus?: 'VERIFIED' | 'FAILED' | 'MANUAL_REVIEW';
   croppedFrontUrl?: string;
   enhancedFrontUrl?: string;

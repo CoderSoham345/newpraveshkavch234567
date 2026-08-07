@@ -306,6 +306,76 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ buildings, auditLo
             </div>
           </div>
 
+          {/* Admin Privacy & Identity Security Policy Settings */}
+          <div className="bg-slate-900 p-5 rounded-2xl border border-cyan-500/30 space-y-4 shadow-xl">
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-slate-800 pb-2">
+              <KeyRound className="w-4 h-4 text-emerald-400" />
+              <span>Privacy & Identity Security Rules</span>
+            </h3>
+
+            <div className="space-y-3 text-xs">
+              <label className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer">
+                <div>
+                  <p className="font-bold text-white">Require Masked Aadhaar Default</p>
+                  <p className="text-[11px] text-slate-400">Default all Aadhaar scans to Masked mode (XXXX XXXX 1234)</p>
+                </div>
+                <input
+                  type="checkbox"
+                  defaultChecked={true}
+                  className="w-4 h-4 accent-emerald-400"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer">
+                <div>
+                  <p className="font-bold text-white">Store Only Last 4 Digits</p>
+                  <p className="text-[11px] text-slate-400">Never persist raw Aadhaar/PAN numbers in database</p>
+                </div>
+                <input
+                  type="checkbox"
+                  defaultChecked={true}
+                  className="w-4 h-4 accent-emerald-400"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer">
+                <div>
+                  <p className="font-bold text-white">Auto-Delete Documents After Exit</p>
+                  <p className="text-[11px] text-slate-400">Purge scanned document crops when visitor checks out</p>
+                </div>
+                <input
+                  type="checkbox"
+                  defaultChecked={true}
+                  className="w-4 h-4 accent-emerald-400"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer">
+                <div>
+                  <p className="font-bold text-white">Encrypt Sensitive Identity Numbers</p>
+                  <p className="text-[11px] text-slate-400">AES-256 encryption at rest for stored records</p>
+                </div>
+                <input
+                  type="checkbox"
+                  defaultChecked={true}
+                  className="w-4 h-4 accent-emerald-400"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer">
+                <div>
+                  <p className="font-bold text-white">Audit Security Access Logs</p>
+                  <p className="text-[11px] text-slate-400">Log every guard query for visitor identity verification</p>
+                </div>
+                <input
+                  type="checkbox"
+                  defaultChecked={true}
+                  className="w-4 h-4 accent-emerald-400"
+                />
+              </label>
+            </div>
+          </div>
+
           <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
             <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-slate-800 pb-2">
               <Sliders className="w-4 h-4 text-amber-400" />

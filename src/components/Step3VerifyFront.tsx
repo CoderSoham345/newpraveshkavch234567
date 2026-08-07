@@ -11,11 +11,18 @@ import {
   AlertCircle,
   QrCode,
   UserCheck,
-  FolderDown
+  FolderDown,
+  Shield,
+  Lock,
+  Eye,
+  EyeOff
 } from 'lucide-react';
-import { ExtractedDocData, FieldWithConfidence } from '../types';
+import { ExtractedDocData, FieldWithConfidence, VisitorPrivacyPreferences, VisibilityMode, AadhaarPrivacySettings } from '../types';
 import { DOCUMENT_SCHEMAS, getDocumentSchema, validateAndComputeFieldConfidences } from '../utils/documentParsers';
 import { SaveDocumentModal } from './SaveDocumentModal';
+import { PrivacyControlModal } from './PrivacyControlModal';
+import { AadhaarPrivacyModal } from './AadhaarPrivacyModal';
+import { DEFAULT_VISITOR_PRIVACY_PREFERENCES } from '../utils/privacyUtils';
 
 interface Step3VerifyFrontProps {
   frontImage: string;
@@ -37,6 +44,19 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [showRawOcr, setShowRawOcr] = useState<boolean>(false);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState<boolean>(false);
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState<boolean>(false);
+  const [isAadhaarModalOpen, setIsAadhaarModalOpen] = useState<boolean>(false);
+
+  const privacyPrefs: VisitorPrivacyPreferences = extractedData.privacyPreferences || DEFAULT_VISITOR_PRIVACY_PREFERENCES;
+  const aadhaarSettings: AadhaarPrivacySettings = extractedData.aadhaarPrivacy || { useMaskedAadhaar: true };
+
+  const handleUpdatePrivacyPreference = (field: keyof VisitorPrivacyPreferences, mode: VisibilityMode) => {
+    const updatedPrefs = { ...privacyPrefs, [field]: mode };
+    setExtractedData({
+      ...extractedData,
+      privacyPreferences: updatedPrefs,
+    });
+  };
 
   // Compute validated data with confidence ratings
   const validatedData = validateAndComputeFieldConfidences(extractedData);
@@ -166,7 +186,16 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
               <p className="text-[11px] text-slate-400">Displaying fields specific to {validatedData.documentType}</p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setIsPrivacyModalOpen(true)}
+                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-cyan-950/80 hover:bg-cyan-900/80 text-cyan-300 border border-cyan-500/50 flex items-center gap-1.5 shadow-sm"
+                id="btn-toggle-privacy-modal"
+              >
+                <Shield className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Privacy Controls</span>
+              </button>
+
               <button
                 onClick={() => setShowRawOcr(!showRawOcr)}
                 className="text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 flex items-center gap-1.5"
@@ -185,6 +214,28 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
                 <span>{isEditing ? 'Done Editing' : 'Edit Details'}</span>
               </button>
             </div>
+          </div>
+
+          {/* Visitor Privacy Active Summary Banner */}
+          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <Lock className="w-4 h-4 text-cyan-400" />
+              <div>
+                <span className="font-bold text-white block">Visitor Control Status</span>
+                <span className="text-[11px] text-slate-400">
+                  {validatedData.documentType.includes('AADHAAR') && (aadhaarSettings.useMaskedAadhaar ? 'Masked Aadhaar (XXXX XXXX 1234)' : 'Full Aadhaar')}
+                  {' • '}
+                  {Object.values(privacyPrefs).filter(v => v === 'HIDDEN').length} field(s) hidden for privacy
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setIsPrivacyModalOpen(true)}
+              className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded bg-slate-900 border border-slate-700 text-cyan-400 hover:text-cyan-300"
+            >
+              Configure
+            </button>
           </div>
 
           {/* Raw OCR Text Viewer Mode */}
@@ -343,6 +394,34 @@ DOB: ${validatedData.dob || 'Not Detected'}`}
         qrCodeData={validatedData.qrCodeData}
         visitorName={extractedData.fullName}
         onNavigateToHistory={onNavigateToHistory}
+      />
+
+      {/* Privacy Visibility Control Modal */}
+      <PrivacyControlModal
+        isOpen={isPrivacyModalOpen}
+        preferences={privacyPrefs}
+        docType={validatedData.documentType}
+        sampleName={validatedData.fullName}
+        sampleDocNumber={validatedData.documentNumber}
+        isMaskedAadhaar={aadhaarSettings.useMaskedAadhaar}
+        onChangePreference={handleUpdatePrivacyPreference}
+        onSave={() => setIsPrivacyModalOpen(false)}
+        onClose={() => setIsPrivacyModalOpen(false)}
+      />
+
+      {/* Aadhaar Privacy Selection Modal */}
+      <AadhaarPrivacyModal
+        isOpen={isAadhaarModalOpen}
+        settings={aadhaarSettings}
+        onSelectOption={(useMasked) => {
+          setExtractedData({
+            ...extractedData,
+            aadhaarPrivacy: { useMaskedAadhaar: useMasked },
+            isMaskedAadhaar: useMasked,
+          });
+        }}
+        onConfirm={() => setIsAadhaarModalOpen(false)}
+        onCancel={() => setIsAadhaarModalOpen(false)}
       />
 
     </div>

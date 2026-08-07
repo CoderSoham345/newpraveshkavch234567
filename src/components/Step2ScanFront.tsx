@@ -6,14 +6,18 @@ import {
   ShieldCheck,
   QrCode,
   Scan,
-  ShieldAlert
+  ShieldAlert,
+  Lock
 } from 'lucide-react';
-import { DocumentType } from '../types';
+import { DocumentType, AadhaarPrivacySettings } from '../types';
 import { DocumentScannerCanvas } from './DocumentScannerCanvas';
+import { AadhaarPrivacyModal } from './AadhaarPrivacyModal';
 
 interface Step2ScanFrontProps {
   selectedDocType: DocumentType;
   setSelectedDocType: (type: DocumentType) => void;
+  aadhaarSettings?: AadhaarPrivacySettings;
+  onUpdateAadhaarSettings?: (settings: AadhaarPrivacySettings) => void;
   onCaptureCompleted: (imageUrl: string, isSample?: boolean, sampleData?: any) => void;
   onCancel: () => void;
 }
@@ -21,11 +25,14 @@ interface Step2ScanFrontProps {
 export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
   selectedDocType,
   setSelectedDocType,
+  aadhaarSettings = { useMaskedAadhaar: true },
+  onUpdateAadhaarSettings,
   onCaptureCompleted,
   onCancel,
 }) => {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [detectedQrCode, setDetectedQrCode] = useState<string | null>(null);
+  const [showPrivacyModal, setShowPrivacyModal] = useState<boolean>(false);
 
   // Supported document types - All 20+ types for comprehensive document support
   const supportedDocTypes: DocumentType[] = [
@@ -124,7 +131,7 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
         </button>
       </div>
 
-      {/* Controls Bar: ID Type Selector & Manual Capture Notice */}
+      {/* Controls Bar: ID Type Selector & Aadhaar Privacy Toggle */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
         
         {/* Document Type Dropdown */}
@@ -134,7 +141,13 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
           </label>
           <select
             value={selectedDocType}
-            onChange={(e) => setSelectedDocType(e.target.value as DocumentType)}
+            onChange={(e) => {
+              const newType = e.target.value as DocumentType;
+              setSelectedDocType(newType);
+              if (newType === 'AADHAAR_FRONT' || newType === 'AADHAAR_BACK') {
+                setShowPrivacyModal(true);
+              }
+            }}
             className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-semibold focus:border-cyan-400 focus:outline-none"
             id="select-doc-type-front"
           >
@@ -146,15 +159,31 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
           </select>
         </div>
 
-        {/* Manual Capture Requirement Status */}
+        {/* Privacy Setting Indicator & Trigger */}
         <div className="flex items-center justify-between bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span className="text-xs font-bold text-white">Manual Capture Mode</span>
+            <Lock className="w-4 h-4 text-cyan-400" />
+            <div>
+              <span className="text-xs font-bold text-white block">
+                {selectedDocType.includes('AADHAAR') 
+                  ? (aadhaarSettings.useMaskedAadhaar ? 'Masked Aadhaar Active' : 'Full Aadhaar Mode')
+                  : 'Privacy Mode Enabled'}
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">
+                {selectedDocType.includes('AADHAAR')
+                  ? (aadhaarSettings.useMaskedAadhaar ? 'XXXX XXXX 9123' : '1234 5678 9123')
+                  : 'Visitor controls visibility'}
+              </span>
+            </div>
           </div>
-          <span className="px-2.5 py-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-extrabold uppercase">
-            Strict Click to Capture
-          </span>
+
+          <button
+            type="button"
+            onClick={() => setShowPrivacyModal(true)}
+            className="px-2.5 py-1 rounded bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-[10px] font-extrabold uppercase transition-colors"
+          >
+            Edit Privacy
+          </button>
         </div>
 
       </div>
@@ -212,8 +241,18 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
         </div>
       )}
 
-      {/* REMOVED: Test Cards Picker - All data now must come from real OCR via Gemini API
-           See ROOT_CAUSE_ANALYSIS.md for details on removing sample data injection */}
+      {/* Aadhaar Privacy Selection Modal */}
+      <AadhaarPrivacyModal
+        isOpen={showPrivacyModal}
+        settings={aadhaarSettings}
+        onSelectOption={(useMasked) => {
+          if (onUpdateAadhaarSettings) {
+            onUpdateAadhaarSettings({ useMaskedAadhaar: useMasked });
+          }
+        }}
+        onConfirm={() => setShowPrivacyModal(false)}
+        onCancel={() => setShowPrivacyModal(false)}
+      />
 
     </div>
   );

@@ -13,9 +13,12 @@ import {
   MapPin, 
   Search,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Lock,
+  ShieldCheck
 } from 'lucide-react';
 import { ExtractedDocData, Resident, FaceVerificationData } from '../types';
+import { maskDocumentNumber, maskName } from '../utils/privacyUtils';
 
 interface Step6SummaryProps {
   frontDocUrl: string;
@@ -182,8 +185,17 @@ export const Step6Summary: React.FC<Step6SummaryProps> = ({
               </div>
 
               <div>
-                <span className="text-slate-400 font-semibold block text-[11px] uppercase">Doc Number</span>
-                <p className="font-bold text-cyan-300 font-mono">{extractedData.documentNumber}</p>
+                <span className="text-slate-400 font-semibold block text-[11px] uppercase flex items-center gap-1">
+                  <span>Doc Number</span>
+                  {(extractedData.isMaskedAadhaar || extractedData.aadhaarPrivacy?.useMaskedAadhaar) && (
+                    <span className="text-[10px] text-cyan-400 font-bold bg-cyan-950/80 px-1.5 rounded">MASKED</span>
+                  )}
+                </span>
+                <p className="font-bold text-cyan-300 font-mono">
+                  {extractedData.aadhaarPrivacy?.useMaskedAadhaar || extractedData.isMaskedAadhaar
+                    ? maskDocumentNumber(extractedData.documentNumber, extractedData.documentType, true)
+                    : extractedData.documentNumber}
+                </p>
               </div>
             </div>
 
