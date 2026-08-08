@@ -18,8 +18,7 @@ import {
   initializeDocumentCamera, 
   stopCameraStream, 
   registerAppResumeListener, 
-  logCamera, 
-  takeNativePhoto 
+  logCamera 
 } from '../services/cameraService';
 import { CameraPermissionModal } from './CameraPermissionModal';
 

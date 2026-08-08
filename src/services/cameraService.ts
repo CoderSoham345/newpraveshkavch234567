@@ -1,11 +1,10 @@
 /**
  * PraveshKavach™ Unified Enterprise Camera Service
- * Handles Camera Permissions, Native Android Capacitor Camera Bridge,
- * WebRTC MediaStream fallback, Lifecycle Management, and Diagnostics Logging.
+ * Powered strictly by Web MediaDevices API (navigator.mediaDevices.getUserMedia)
+ * No dependency on @capacitor/camera
  */
 
 import { Capacitor } from '@capacitor/core';
-import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { App } from '@capacitor/app';
 
 export interface CameraPermissionState {
@@ -24,6 +23,17 @@ export interface CameraInitResult {
   error: string | null;
   permissionState: CameraPermissionState;
 }
+
+export type CameraPermissionStatus = 
+  | 'CHECKING_PERMISSION'
+  | 'REQUESTING_PERMISSION'
+  | 'PERMISSION_GRANTED'
+  | 'PERMISSION_DENIED'
+  | 'CAMERA_STARTING'
+  | 'CAMERA_ACTIVE'
+  | 'CAMERA_ERROR'
+  | 'CAPTURED'
+  | 'CAMERA_STOPPED';
 
 /**
  * Enterprise Camera Logger
@@ -47,31 +57,8 @@ export function getPlatform(): 'android' | 'ios' | 'web' {
  * Checks current camera permissions status without prompting the user.
  */
 export async function checkCameraPermissions(): Promise<CameraPermissionState> {
-  const platform = getPlatform();
-  logCamera(`Checking camera permission (Platform: ${platform})`);
+  logCamera(`Checking camera permission`);
 
-  if (Capacitor.isNativePlatform()) {
-    try {
-      const status = await Camera.checkPermissions();
-      const state = status.camera;
-      logCamera(`Capacitor checkPermissions result:`, state);
-
-      if (state === 'granted') {
-        logCamera(`Permission status: granted`);
-        return { granted: true, denied: false, prompt: false };
-      } else if (state === 'denied') {
-        logCamera(`Permission status: denied`);
-        return { granted: false, denied: true, prompt: false };
-      } else {
-        logCamera(`Permission status: prompt`);
-        return { granted: false, denied: false, prompt: true };
-      }
-    } catch (err: any) {
-      logCamera(`Capacitor checkPermissions error:`, err);
-    }
-  }
-
-  // Web Browser Check
   if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
     try {
       const res = await navigator.permissions.query({ name: 'camera' as any });
@@ -90,8 +77,8 @@ export async function checkCameraPermissions(): Promise<CameraPermissionState> {
 }
 
 /**
- * Requests camera permission from Android OS / Capacitor or Web Browser.
- * On Android APK, triggers the REAL system camera permission dialog.
+ * Requests camera permission via getUserMedia.
+ * In Capacitor Android WebView, this triggers the native Android runtime permission dialog.
  */
 let activeRequestPromise: Promise<CameraPermissionState> | null = null;
 
@@ -101,65 +88,36 @@ export async function requestCameraPermissions(): Promise<CameraPermissionState>
   }
 
   activeRequestPromise = (async () => {
-    const platform = getPlatform();
-    logCamera(`Requesting camera permission (Platform: ${platform})`);
+    logCamera(`Requesting camera permission via getUserMedia...`);
 
-    // Check existing state first
-    const current = await checkCameraPermissions();
-    if (current.granted) {
-      logCamera(`Camera permission already granted`);
-      return current;
-    }
-
-    // Request Native Android / iOS system permission
-    if (Capacitor.isNativePlatform()) {
-      try {
-        logCamera(`Triggering native Android camera permission dialog...`);
-        const status = await Camera.requestPermissions({ permissions: ['camera'] });
-        logCamera(`Native requestPermissions status:`, status.camera);
-
-        if (status.camera === 'granted') {
-          logCamera(`Camera permission granted`);
-          return { granted: true, denied: false, prompt: false };
-        } else {
-          logCamera(`Permission status: denied`);
-          return {
-            granted: false,
-            denied: true,
-            prompt: false,
-            error: 'Camera permission was denied in Android system dialog.',
-          };
-        }
-      } catch (err: any) {
-        logCamera(`Camera.requestPermissions error:`, err);
-        return {
-          granted: false,
-          denied: true,
-          prompt: false,
-          error: err?.message || 'Failed to request camera permission via native bridge.',
-        };
-      }
-    }
-
-    // Web Browser Fallback Request via getUserMedia
     if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
       try {
-        const testStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const testStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false,
+        });
         testStream.getTracks().forEach((track) => track.stop());
         logCamera(`Camera permission granted`);
         return { granted: true, denied: false, prompt: false };
       } catch (err: any) {
-        logCamera(`Web getUserMedia permission error:`, err);
+        logCamera(`getUserMedia permission error:`, err);
         return {
           granted: false,
           denied: true,
           prompt: false,
-          error: err.name === 'NotAllowedError' ? 'Camera permission denied in browser.' : err.message,
+          error: err.name === 'NotAllowedError'
+            ? 'PraveshKavach needs camera access to scan the visitor\'s identity document.'
+            : err.message || 'Camera permission denied.',
         };
       }
     }
 
-    return { granted: true, denied: false, prompt: false };
+    return {
+      granted: false,
+      denied: true,
+      prompt: false,
+      error: 'MediaDevices API is not supported on this browser or platform.',
+    };
   })();
 
   try {
@@ -189,44 +147,20 @@ export async function openAppSettings(): Promise<void> {
 
 /**
  * Main Camera Initialization Pipeline:
- * 1. Log platform & open state
- * 2. Check permission
- * 3. Request permission if required
- * 4. Wait for permission
- * 5. If granted, initialize live camera feed with resilient constraint fallbacks
+ * Prefers rear/world-facing camera (facingMode: { ideal: 'environment' })
+ * Resolution: 1920x1080 ideal
  */
 export async function initializeDocumentCamera(options: CameraStreamOptions): Promise<CameraInitResult> {
-  logCamera(`Scanner opened`);
-  const platform = getPlatform();
-  logCamera(`Platform: ${platform}`);
-
-  logCamera(`Checking camera permission`);
-  let perm = await checkCameraPermissions();
-
-  if (!perm.granted) {
-    logCamera(`Requesting camera permission`);
-    perm = await requestCameraPermissions();
-  }
-
-  if (!perm.granted) {
-    logCamera(`Permission status: denied`);
-    return {
-      stream: null,
-      error: perm.error || 'Camera permission is required to scan identity documents.',
-      permissionState: perm,
-    };
-  }
-
-  logCamera(`Camera permission granted`);
-  logCamera(`Initializing native camera`);
+  logCamera(`Initializing document camera stream...`);
+  const facing = options.facingMode || 'environment';
 
   if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-    const error = 'MediaDevices API not supported on this device/browser.';
+    const error = 'MediaDevices API not supported on this device or WebView.';
     logCamera(`Camera error: ${error}`);
     return {
       stream: null,
       error,
-      permissionState: perm,
+      permissionState: { granted: false, denied: true, prompt: false, error },
     };
   }
 
@@ -234,7 +168,7 @@ export async function initializeDocumentCamera(options: CameraStreamOptions): Pr
   const constraintsList = [
     {
       video: {
-        facingMode: { ideal: options.facingMode },
+        facingMode: { ideal: facing },
         width: { ideal: 1920 },
         height: { ideal: 1080 },
       },
@@ -242,7 +176,7 @@ export async function initializeDocumentCamera(options: CameraStreamOptions): Pr
     },
     {
       video: {
-        facingMode: { ideal: options.facingMode },
+        facingMode: { ideal: facing },
         width: { ideal: 1280 },
         height: { ideal: 720 },
       },
@@ -250,7 +184,7 @@ export async function initializeDocumentCamera(options: CameraStreamOptions): Pr
     },
     {
       video: {
-        facingMode: { ideal: options.facingMode },
+        facingMode: { ideal: facing },
       },
       audio: false,
     },
@@ -265,11 +199,10 @@ export async function initializeDocumentCamera(options: CameraStreamOptions): Pr
 
   for (let i = 0; i < constraintsList.length; i++) {
     try {
-      logCamera(`Attempting stream start with constraint level ${i + 1}`);
+      logCamera(`Attempting camera stream level ${i + 1}`);
       stream = await navigator.mediaDevices.getUserMedia(constraintsList[i]);
       if (stream) {
-        logCamera(`Camera initialized`);
-        logCamera(`Document scanner started`);
+        logCamera(`Live camera stream initialized successfully`);
         break;
       }
     } catch (err: any) {
@@ -280,13 +213,18 @@ export async function initializeDocumentCamera(options: CameraStreamOptions): Pr
 
   if (!stream) {
     const errorMsg = lastError?.name === 'NotAllowedError'
-      ? 'Camera stream access denied.'
-      : lastError?.message || 'Failed to initialize camera video stream.';
-    logCamera(`Camera error: ${errorMsg}`);
+      ? 'PraveshKavach needs camera access to scan the visitor\'s identity document.'
+      : lastError?.message || 'Failed to initialize camera stream.';
+    
     return {
       stream: null,
       error: errorMsg,
-      permissionState: perm,
+      permissionState: {
+        granted: false,
+        denied: lastError?.name === 'NotAllowedError',
+        prompt: lastError?.name !== 'NotAllowedError',
+        error: errorMsg,
+      },
     };
   }
 
@@ -302,13 +240,13 @@ export async function initializeDocumentCamera(options: CameraStreamOptions): Pr
       }
     }
   } catch (e) {
-    // Non-fatal constraint application error
+    // Non-fatal
   }
 
   return {
     stream,
     error: null,
-    permissionState: perm,
+    permissionState: { granted: true, denied: false, prompt: false },
   };
 }
 
@@ -320,7 +258,7 @@ export function stopCameraStream(stream: MediaStream | null): void {
   try {
     stream.getTracks().forEach((track) => {
       track.stop();
-      logCamera(`Camera track stopped: ${track.label || track.kind}`);
+      logCamera(`Stopped camera track: ${track.label || track.kind}`);
     });
   } catch (err) {
     logCamera(`Error stopping camera track:`, err);
@@ -328,28 +266,7 @@ export function stopCameraStream(stream: MediaStream | null): void {
 }
 
 /**
- * Captures a photo using the native Capacitor Camera picker if live WebRTC fails.
- */
-export async function takeNativePhoto(): Promise<string | null> {
-  if (!Capacitor.isNativePlatform()) return null;
-  try {
-    logCamera(`Capture started via native photo picker`);
-    const photo = await Camera.getPhoto({
-      quality: 90,
-      allowEditing: false,
-      resultType: CameraResultType.DataUrl,
-      source: CameraSource.Camera,
-    });
-    logCamera(`Capture successful`);
-    return photo.dataUrl || null;
-  } catch (err: any) {
-    logCamera(`Native photo capture cancelled or failed:`, err);
-    return null;
-  }
-}
-
-/**
- * Registers Android app lifecycle resume listeners to re-check permissions and restart camera.
+ * Registers app resume listener to re-check permissions / restart camera.
  */
 export function registerAppResumeListener(onResume: () => void): () => void {
   if (Capacitor.isNativePlatform()) {
@@ -370,7 +287,7 @@ export function registerAppResumeListener(onResume: () => void): () => void {
 
   const handleVisibilityChange = () => {
     if (document.visibilityState === 'visible') {
-      logCamera(`Document page became visible. Re-checking camera...`);
+      logCamera(`Page became visible. Re-checking camera...`);
       onResume();
     }
   };

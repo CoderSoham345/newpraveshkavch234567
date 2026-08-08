@@ -9,19 +9,13 @@ import {
   Scan,
   XCircle,
   RefreshCw,
-  Smartphone,
   Info,
-  Maximize2,
-  FileCheck2,
-  Sliders,
-  Check,
-  Ban,
   Terminal,
   Zap,
   ZapOff,
-  Sparkle,
-  Layers,
-  Activity
+  RotateCcw,
+  Settings,
+  ArrowRight
 } from 'lucide-react';
 import { DocumentType } from '../types';
 import { 
@@ -36,10 +30,11 @@ import {
   initializeDocumentCamera, 
   stopCameraStream, 
   registerAppResumeListener, 
-  logCamera, 
-  takeNativePhoto 
+  logCamera,
+  requestCameraPermissions,
+  openAppSettings,
+  CameraPermissionStatus
 } from '../services/cameraService';
-import { CameraPermissionModal } from './CameraPermissionModal';
 
 interface DocumentScannerCanvasProps {
   selectedDocType: DocumentType;
@@ -55,14 +50,18 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
   const hiddenFrameCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const [cameraPermission, setCameraPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
+  const [cameraState, setCameraState] = useState<CameraPermissionStatus>('CHECKING_PERMISSION');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
 
   // Scanner Modes & Settings
   const [isTorchOn, setIsTorchOn] = useState<boolean>(false);
   const [isAutoScanMode, setIsAutoScanMode] = useState<boolean>(true); // Auto-capture default
-  const [showDebugPanel, setShowDebugPanel] = useState<boolean>(true);
+  const [showDebugPanel, setShowDebugPanel] = useState<boolean>(false);
+
+  // Captured Image State for Freeze/Retake/Continue Flow
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [capturedQrData, setCapturedQrData] = useState<string | null>(null);
 
   // Detection and Validation States
   const [scanResult, setScanResult] = useState<ScanValidationResult | null>(null);
@@ -77,44 +76,63 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
   const lossFrameCountRef = useRef<number>(0);
   const lastValidQuadRef = useRef<DetectedQuad | null>(null);
 
+  // Stop camera tracks helper
+  const handleStopCamera = () => {
+    if (stream) {
+      stopCameraStream(stream);
+      setStream(null);
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+
   // Initialize camera stream
   const initCamera = async () => {
     try {
-      if (stream) {
-        stopCameraStream(stream);
-        setStream(null);
-      }
-
+      handleStopCamera();
       setErrorMessage(null);
-      
+      setCameraState('CAMERA_STARTING');
+
       const initResult = await initializeDocumentCamera({ facingMode });
 
       if (!initResult.permissionState.granted) {
-        setCameraPermission('denied');
-        setErrorMessage(initResult.error || 'Camera permission denied. Please allow camera access.');
+        setCameraState('PERMISSION_DENIED');
+        setErrorMessage(
+          initResult.error || 'PraveshKavach needs camera access to scan the visitor\'s identity document.'
+        );
         return;
       }
 
-      setCameraPermission('granted');
-
       if (initResult.stream) {
         setStream(initResult.stream);
+        setCameraState('CAMERA_ACTIVE');
         if (videoRef.current) {
           videoRef.current.srcObject = initResult.stream;
+          await videoRef.current.play().catch((e) => logCamera('Video play error:', e));
         }
       } else {
-        setErrorMessage(initResult.error || 'Failed to initialize live camera.');
+        setCameraState('CAMERA_ERROR');
+        setErrorMessage(initResult.error || 'Failed to initialize live camera feed.');
       }
     } catch (err: any) {
       logCamera(`Camera stream error:`, err);
+      setCameraState('CAMERA_ERROR');
       setErrorMessage(err?.message || 'Camera stream is unavailable.');
     }
   };
 
-  const handleNativeCameraCapture = async () => {
-    const photoUrl = await takeNativePhoto();
-    if (photoUrl) {
-      onCaptured(photoUrl, null);
+  const handleRequestPermission = async () => {
+    setCameraState('REQUESTING_PERMISSION');
+    setErrorMessage(null);
+    const res = await requestCameraPermissions();
+    if (res.granted) {
+      initCamera();
+    } else {
+      setCameraState('PERMISSION_DENIED');
+      setErrorMessage(
+        res.error || 'PraveshKavach needs camera access to scan the visitor\'s identity document.'
+      );
     }
   };
 
@@ -122,14 +140,14 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
     initCamera();
 
     const unregisterResume = registerAppResumeListener(() => {
-      initCamera();
+      if (cameraState !== 'CAPTURED') {
+        initCamera();
+      }
     });
 
     return () => {
       unregisterResume();
-      if (stream) {
-        stopCameraStream(stream);
-      }
+      handleStopCamera();
     };
   }, [facingMode]);
 
@@ -159,10 +177,10 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
     setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
   };
 
-  // Execute Manual or Auto Capture
+  // Capture frame action
   const triggerCaptureAction = (resultToCapture: ScanValidationResult | null) => {
     if (!videoRef.current || isCapturing) return;
-    logCamera('Capture started');
+    logCamera('Capture frame started');
     setIsCapturing(true);
 
     const video = videoRef.current;
@@ -173,34 +191,55 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
 
     const activeResult = resultToCapture || scanResult;
 
-    if (ctx && activeResult) {
+    if (ctx) {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
       let croppedDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-      const qrData: string | null = activeResult.qrCodeData;
+      const qrData: string | null = activeResult?.qrCodeData || null;
 
-      if (activeResult.quad) {
-        // Perspective Transformation: warped & cropped & enhanced to exact card geometry
+      if (activeResult?.quad) {
         croppedDataUrl = cropAndStraightenDocument(canvas, activeResult.quad.corners);
       }
 
-      logCamera('Capture successful');
-      onCaptured(croppedDataUrl, qrData);
+      logCamera('Frame captured successfully');
+      setCapturedImage(croppedDataUrl);
+      setCapturedQrData(qrData);
+      setCameraState('CAPTURED');
+      handleStopCamera();
     }
     setIsCapturing(false);
   };
 
+  // Retake captured photo
+  const handleRetake = () => {
+    setCapturedImage(null);
+    setCapturedQrData(null);
+    setScanResult(null);
+    steadyFrameCountRef.current = 0;
+    setAutoCaptureProgress(0);
+    initCamera();
+  };
+
+  // Continue with captured photo
+  const handleContinue = () => {
+    if (capturedImage) {
+      onCaptured(capturedImage, capturedQrData);
+    }
+  };
+
   // Real-Time Computer Vision Continuous Corner Tracking & Overlay Animation
   useEffect(() => {
+    if (cameraState !== 'CAMERA_ACTIVE') return;
+
     let animFrameId: number;
 
     const processFrame = () => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
 
-      if (canvas) {
-        const width = video?.videoWidth || canvas.clientWidth || 1280;
-        const height = video?.videoHeight || canvas.clientHeight || 720;
+      if (canvas && video && cameraState === 'CAMERA_ACTIVE') {
+        const width = video.videoWidth || canvas.clientWidth || 1280;
+        const height = video.videoHeight || canvas.clientHeight || 720;
 
         if (canvas.width !== width || canvas.height !== height) {
           canvas.width = width;
@@ -209,7 +248,7 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
 
         let currentResult: ScanValidationResult | null = null;
 
-        if (video && video.readyState === video.HAVE_ENOUGH_DATA && !isCapturing) {
+        if (video.readyState === video.HAVE_ENOUGH_DATA && !isCapturing) {
           if (!hiddenFrameCanvasRef.current) {
             hiddenFrameCanvasRef.current = document.createElement('canvas');
           }
@@ -233,7 +272,7 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
               setAutoCaptureProgress(0);
 
               result.readyToCapture = false;
-              result.userGuidance = 'Please point camera toward the document.';
+              result.userGuidance = 'HOLD DOCUMENT STRAIGHT';
             } else {
               // --- STABILITY & HYSTERESIS SYSTEM ---
               const currentQuad = result.quad;
@@ -242,14 +281,12 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
                 lossFrameCountRef.current = 0;
                 lastValidQuadRef.current = currentQuad;
 
-                // Smooth corners to eliminate camera shake/jitter
                 const smoothed = smoothCorners(currentQuad.corners, prevCornersRef.current, 0.35);
                 if (smoothed) {
                   currentQuad.corners = smoothed;
                   prevCornersRef.current = smoothed;
                 }
               } else if (lastValidQuadRef.current && lossFrameCountRef.current < 25) {
-                // Hysteresis Grace Period: hold detection while moving/shaking (< 1 second)
                 lossFrameCountRef.current += 1;
                 result.quad = lastValidQuadRef.current;
                 result.quadDetected = true;
@@ -268,18 +305,21 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
                 result.quadDetected = false;
               }
 
-              // Ready-to-Capture logic
+              // Ready-to-Capture logic & guidance messages
               const isCardDetected = Boolean(result.quad);
               result.readyToCapture = isCardDetected && result.cardDistance !== 'TOO_FAR';
 
               if (isCardDetected) {
                 if (result.cardDistance === 'TOO_FAR') {
-                  result.userGuidance = 'Move closer';
+                  result.userGuidance = 'MOVE CLOSER';
+                  steadyFrameCountRef.current = 0;
+                  setAutoCaptureProgress(0);
+                } else if (result.cardDistance === 'TOO_CLOSE') {
+                  result.userGuidance = 'MOVE FARTHER';
                   steadyFrameCountRef.current = 0;
                   setAutoCaptureProgress(0);
                 } else {
-                  result.userGuidance = 'Hold steady...';
-                  // Auto-scan trigger progress tracking
+                  result.userGuidance = 'DOCUMENT ALIGNED';
                   steadyFrameCountRef.current += 1;
                   const progress = Math.min(100, Math.round((steadyFrameCountRef.current / 16) * 100));
                   setAutoCaptureProgress(progress);
@@ -292,7 +332,7 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
               } else {
                 steadyFrameCountRef.current = 0;
                 setAutoCaptureProgress(0);
-                result.userGuidance = 'Searching for document...';
+                result.userGuidance = 'SEARCHING FOR DOCUMENT...';
               }
             }
 
@@ -301,12 +341,11 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
           }
         }
 
-        // Draw dynamic overlay quadrilateral canvas (ALWAYS ACTIVE EVERY FRAME)
+        // Draw dynamic overlay quadrilateral canvas
         const overlayCtx = canvas.getContext('2d');
         if (overlayCtx) {
           overlayCtx.clearRect(0, 0, width, height);
 
-          // Default guide box when searching
           const guideW = width * 0.78;
           const guideH = guideW / 1.58;
           const guideX = (width - guideW) / 2;
@@ -326,7 +365,7 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
           const hasFace = Boolean(activeResult?.hasFaceInFrame);
           const isConfirmedGreen = Boolean(activeResult?.readyToCapture);
 
-          // 1. Darkened Outer Mask with cutout around activeCorners
+          // Darkened Outer Mask
           overlayCtx.fillStyle = 'rgba(2, 6, 23, 0.65)';
           overlayCtx.beginPath();
           overlayCtx.rect(0, 0, width, height);
@@ -337,14 +376,14 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
           overlayCtx.closePath();
           overlayCtx.fill('evenodd');
 
-          // 2. Dynamic Yellow Polygon Border (Google Drive Scanner style)
+          // Dynamic Polygon Border
           overlayCtx.save();
 
           const strokeColor = hasFace
-            ? '#f43f5e' // Red for face warning
+            ? '#f43f5e'
             : isConfirmedGreen
-            ? '#10b981' // Green when ready to capture
-            : '#facc15'; // Bright Yellow polygon stroke
+            ? '#10b981'
+            : '#facc15';
 
           const fillColor = hasFace
             ? 'rgba(244, 63, 94, 0.15)'
@@ -361,7 +400,6 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
           overlayCtx.closePath();
           overlayCtx.fill();
 
-          // Smooth Yellow/Green Border Stroke
           overlayCtx.strokeStyle = strokeColor;
           overlayCtx.lineWidth = isConfirmedGreen ? 5 : 4;
           overlayCtx.shadowColor = strokeColor;
@@ -375,22 +413,20 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
           overlayCtx.closePath();
           overlayCtx.stroke();
 
-          // 3. Google Drive Scanner Corner Brackets on all 4 detected corners
+          // Corner Brackets
           const cornersArr = [
-            { pt: c.topLeft, angle: 0 },
-            { pt: c.topRight, angle: 90 },
-            { pt: c.bottomRight, angle: 180 },
-            { pt: c.bottomLeft, angle: 270 }
+            { pt: c.topLeft },
+            { pt: c.topRight },
+            { pt: c.bottomRight },
+            { pt: c.bottomLeft }
           ];
 
           cornersArr.forEach(({ pt }) => {
-            // Corner vertex circle
             overlayCtx.fillStyle = '#ffffff';
             overlayCtx.beginPath();
             overlayCtx.arc(pt.x, pt.y, 7, 0, Math.PI * 2);
             overlayCtx.fill();
 
-            // Outer reticle ring
             overlayCtx.strokeStyle = strokeColor;
             overlayCtx.lineWidth = 3;
             overlayCtx.beginPath();
@@ -398,7 +434,7 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
             overlayCtx.stroke();
           });
 
-          // 4. Animated Scanning Laser Line
+          // Scanning Laser Line
           const time = Date.now() / 1000;
           const progress = (Math.sin(time * 3.5) + 1) / 2;
           const topX = c.topLeft.x + (c.topRight.x - c.topLeft.x) * progress;
@@ -423,11 +459,108 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
 
     animFrameId = requestAnimationFrame(processFrame);
     return () => cancelAnimationFrame(animFrameId);
-  }, [selectedDocType, isCapturing, isAutoScanMode]);
+  }, [selectedDocType, isCapturing, isAutoScanMode, cameraState]);
 
   const isReadyToCapture = Boolean(scanResult?.readyToCapture);
   const debug = scanResult?.debugStats;
 
+  // --- CAPTURED STATE DISPLAY ---
+  if (cameraState === 'CAPTURED' && capturedImage) {
+    return (
+      <div className="relative w-full rounded-2xl bg-slate-950 border border-emerald-500/40 overflow-hidden shadow-2xl flex flex-col items-center justify-center p-4 sm:p-6 space-y-4 animate-fade-in">
+        <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm tracking-wide">
+          <CheckCircle2 className="w-5 h-5" />
+          <span>DOCUMENT CAPTURED</span>
+        </div>
+
+        <div className="relative max-w-lg w-full rounded-xl overflow-hidden border-2 border-emerald-500/50 shadow-2xl bg-slate-900">
+          <img 
+            src={capturedImage} 
+            alt="Captured Document" 
+            className="w-full h-auto object-contain max-h-[350px] mx-auto"
+          />
+          {capturedQrData && (
+            <div className="absolute bottom-2 left-2 right-2 bg-slate-950/90 border border-emerald-500/50 p-2 rounded-lg text-xs font-mono text-emerald-300 truncate flex items-center gap-2">
+              <QrCode className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>QR Code Extracted</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3 w-full max-w-md pt-2">
+          <button
+            type="button"
+            onClick={handleRetake}
+            className="flex-1 py-3 px-4 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
+            id="btn-retake-captured-doc"
+          >
+            <RotateCcw className="w-4 h-4 text-amber-400" />
+            <span>RETAKE</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleContinue}
+            className="flex-1 py-3 px-4 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 shadow-lg border border-emerald-400/40 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
+            id="btn-continue-captured-doc"
+          >
+            <span>CONTINUE</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- PERMISSION DENIED DISPLAY ---
+  if (cameraState === 'PERMISSION_DENIED') {
+    return (
+      <div className="w-full rounded-2xl bg-slate-950 border border-rose-800/60 p-6 sm:p-8 text-center flex flex-col items-center justify-center space-y-4 shadow-2xl">
+        <div className="w-16 h-16 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center">
+          <Camera className="w-8 h-8 animate-pulse" />
+        </div>
+
+        <h3 className="text-lg font-bold text-white tracking-wide">
+          CAMERA PERMISSION REQUIRED
+        </h3>
+
+        <p className="text-xs text-slate-300 max-w-md leading-relaxed">
+          PraveshKavach needs camera access to scan the visitor's identity document.
+        </p>
+
+        {errorMessage && (
+          <div className="w-full max-w-md p-3 bg-rose-950/50 border border-rose-800/80 rounded-xl flex items-start gap-2.5 text-left text-rose-300 text-xs">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row gap-3 w-full max-w-md pt-2">
+          <button
+            type="button"
+            onClick={handleRequestPermission}
+            className="flex-1 py-3 px-4 rounded-xl text-xs font-bold bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg border border-cyan-400/30 flex items-center justify-center gap-2 transition-all cursor-pointer"
+            id="btn-permission-try-again"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>TRY AGAIN</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={openAppSettings}
+            className="flex-1 py-3 px-4 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer"
+            id="btn-permission-open-settings"
+          >
+            <Settings className="w-4 h-4 text-cyan-400" />
+            <span>OPEN SETTINGS</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- LIVE CAMERA SCREEN ---
   return (
     <div className="relative w-full rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden shadow-2xl aspect-[16/10] sm:aspect-[16/9] flex items-center justify-center">
       
@@ -446,7 +579,7 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
         className="absolute inset-0 w-full h-full object-cover pointer-events-none"
       />
 
-      {/* Top Google Drive Scanner Control Header */}
+      {/* Top Scanner Control Header */}
       <div className="absolute top-3 left-3 right-3 z-20 flex flex-col pointer-events-none space-y-2">
         
         {/* Header Action Controls */}
@@ -531,7 +664,7 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
           ) : (
             <Sparkles className="w-4 h-4 text-amber-300 shrink-0 animate-spin" />
           )}
-          <span>{scanResult?.userGuidance || 'Searching for document...'}</span>
+          <span>{scanResult?.userGuidance || 'SEARCHING FOR DOCUMENT...'}</span>
         </div>
 
       </div>
@@ -574,18 +707,6 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
             <span className="font-bold text-amber-300">{debug?.confidence ?? 0}%</span>
           </div>
 
-          <div className="flex justify-between">
-            <span className="text-slate-400">Doc Type:</span>
-            <span className="font-bold text-slate-100 truncate max-w-[130px]">{debug?.detectedDocument ?? 'None'}</span>
-          </div>
-
-          {debug?.rejectionReason && (
-            <div className="flex justify-between text-rose-400">
-              <span>Rejection:</span>
-              <span className="font-bold truncate max-w-[120px]">{debug.rejectionReason}</span>
-            </div>
-          )}
-
           <div className="flex justify-between border-t border-slate-800 pt-1">
             <span className="text-slate-400 font-bold">Capture State:</span>
             <span className={`font-extrabold px-1.5 py-0.5 rounded text-[10px] ${
@@ -607,17 +728,7 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
         </div>
       )}
 
-      {/* Camera Permission Modal */}
-      <CameraPermissionModal
-        isOpen={cameraPermission === 'denied'}
-        errorMessage={errorMessage}
-        onPermissionGranted={() => {
-          setCameraPermission('prompt');
-          initCamera();
-        }}
-      />
-
-      {/* Google Drive Style Bottom Camera Shutter Bar */}
+      {/* Bottom Camera Shutter Bar */}
       <div className="absolute bottom-3 inset-x-0 z-20 flex flex-col items-center justify-center px-4 space-y-2">
         
         {/* Auto-scan Progress Ring Indicator */}
@@ -628,16 +739,6 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
               style={{ width: `${autoCaptureProgress}%` }}
             />
           </div>
-        )}
-
-        {errorMessage && (
-          <button
-            onClick={handleNativeCameraCapture}
-            className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold text-xs shadow-lg flex items-center gap-2 cursor-pointer"
-          >
-            <Camera className="w-4 h-4" />
-            <span>Take Photo with Native Camera</span>
-          </button>
         )}
 
         <button
@@ -652,7 +753,7 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
         >
           <Camera className="w-5 h-5" />
           <span>
-            {isReadyToCapture ? 'CAPTURE DOCUMENT' : 'ALIGN VALID DOCUMENT'}
+            {isReadyToCapture ? 'CAPTURE DOCUMENT' : 'ALIGN DOCUMENT INSIDE FRAME'}
           </span>
         </button>
 

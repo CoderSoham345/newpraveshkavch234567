@@ -7,7 +7,6 @@ export {
   checkCameraPermissions,
   requestCameraPermissions,
   openAppSettings,
-  takeNativePhoto,
   initializeDocumentCamera,
   stopCameraStream,
   registerAppResumeListener,
@@ -15,4 +14,9 @@ export {
   getPlatform,
 } from '../services/cameraService';
 
-export type { CameraPermissionState, CameraStreamOptions, CameraInitResult } from '../services/cameraService';
+export type { 
+  CameraPermissionState, 
+  CameraStreamOptions, 
+  CameraInitResult,
+  CameraPermissionStatus 
+} from '../services/cameraService';
