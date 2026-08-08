@@ -1,1 +1,30 @@
 @import "tailwindcss";
+
+@media print {
+  body {
+    background-color: white !important;
+    color: black !important;
+  }
+
+  /* Hide non-printable elements */
+  nav, header, footer, button, .no-print, .print\:hidden {
+    display: none !important;
+  }
+
+  .printable-document {
+    background-color: white !important;
+    color: black !important;
+    border: 2px solid #000 !important;
+    box-shadow: none !important;
+    padding: 24px !important;
+    margin: 0 auto !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif !important;
+  }
+
+  .printable-document * {
+    color: black !important;
+    border-color: #333 !important;
+  }
+}

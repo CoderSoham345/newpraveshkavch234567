@@ -14,7 +14,13 @@ import {
   Smartphone
 } from 'lucide-react';
 import { FaceVerificationData } from '../types';
-import { requestCameraPermissions, takeNativePhoto } from '../utils/nativeCameraPermissions';
+import { 
+  initializeDocumentCamera, 
+  stopCameraStream, 
+  registerAppResumeListener, 
+  logCamera, 
+  takeNativePhoto 
+} from '../services/cameraService';
 import { CameraPermissionModal } from './CameraPermissionModal';
 
 interface Step5CaptureFaceProps {
@@ -50,47 +56,31 @@ export const Step5CaptureFace: React.FC<Step5CaptureFaceProps> = ({
   const startCamera = async () => {
     try {
       if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+        stopCameraStream(stream);
+        setStream(null);
       }
 
       setPermissionError(null);
-      const permResult = await requestCameraPermissions();
-      if (!permResult.granted) {
+      const initResult = await initializeDocumentCamera({ facingMode });
+
+      if (!initResult.permissionState.granted) {
         setCameraPermission('denied');
-        setPermissionError(permResult.error || 'Camera permission denied in system settings.');
+        setPermissionError(initResult.error || 'Camera permission denied in system settings.');
         return;
       }
 
       setCameraPermission('granted');
 
-      let mediaStream: MediaStream | null = null;
-      try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: false,
-        });
-      } catch (e) {
-        try {
-          mediaStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: facingMode },
-            audio: false,
-          });
-        } catch (e2) {
-          mediaStream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false,
-          });
-        }
-      }
-
-      if (mediaStream) {
-        setStream(mediaStream);
+      if (initResult.stream) {
+        setStream(initResult.stream);
         if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream;
+          videoRef.current.srcObject = initResult.stream;
         }
+      } else {
+        setPermissionError(initResult.error || 'Camera stream is unavailable.');
       }
     } catch (err: any) {
-      console.warn('Camera stream error:', err);
+      logCamera('Face camera start error:', err);
       setPermissionError(err?.message || 'Camera stream is unavailable or blocked.');
     }
   };
@@ -98,9 +88,14 @@ export const Step5CaptureFace: React.FC<Step5CaptureFaceProps> = ({
   useEffect(() => {
     startCamera();
 
+    const unregisterResume = registerAppResumeListener(() => {
+      startCamera();
+    });
+
     return () => {
+      unregisterResume();
       if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+        stopCameraStream(stream);
       }
     };
   }, [facingMode]);

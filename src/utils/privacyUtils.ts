@@ -33,57 +33,73 @@ export function maskAadhaarNumber(aadhaarNum: string): string {
   return 'XXXX XXXX XXXX';
 }
 
-export function maskDocumentNumber(docNum: string, docType: DocumentType, isMaskedAadhaar?: boolean): string {
-  if (!docNum) return 'XXXXXX';
-  const clean = docNum.trim().toUpperCase().replace(/\s+/g, '');
+export function maskIdentityNumber(docType: DocumentType | string, value: string): string {
+  if (!value) return 'XXXXXX';
+  const clean = value.trim();
+  const upper = clean.toUpperCase().replace(/\s+/g, '');
+  const typeStr = String(docType).toUpperCase();
 
-  if (isMaskedAadhaar || docType === 'AADHAAR_FRONT' || docType === 'AADHAAR_BACK') {
-    return maskAadhaarNumber(docNum);
-  }
-
-  // PAN Card: ABCDE1234F -> ABCDE****F
-  if (docType === 'PAN_CARD' || (clean.length === 10 && /^[A-Z]{5}\d{4}[A-Z]$/.test(clean))) {
-    if (clean.length === 10) {
-      return `${clean.substring(0, 5)}****${clean.substring(9)}`;
+  if (typeStr.includes('AADHAAR') || (upper.length === 12 && /^\d{12}$/.test(upper))) {
+    const digits = upper.replace(/\D/g, '');
+    if (digits.length >= 4) {
+      return `XXXX XXXX ${digits.slice(-4)}`;
     }
+    return 'XXXX XXXX XXXX';
   }
 
-  // Passport: N12345678 -> N******78
-  if (docType === 'PASSPORT' || (clean.length >= 8 && /^[A-Z]\d{7,8}$/.test(clean))) {
-    if (clean.length >= 8) {
-      const prefix = clean.substring(0, 1);
-      const suffix = clean.substring(clean.length - 2);
-      const maskedMiddle = '*'.repeat(clean.length - 3);
-      return `${prefix}${maskedMiddle}${suffix}`;
+  if (typeStr === 'PAN_CARD' || typeStr === 'PAN' || (upper.length === 10 && /^[A-Z]{5}\d{4}[A-Z]$/.test(upper))) {
+    if (upper.length === 10) {
+      return `XXXXX${upper.substring(5, 9)}X`;
     }
+    if (upper.length >= 5) {
+      return `XXXXX${upper.slice(5)}`;
+    }
+    return 'XXXXX1234X';
   }
 
-  // Driving Licence: MH0120221234567 -> MH********4567
-  if (docType === 'DRIVING_LICENCE' || clean.length >= 12) {
-    if (clean.length >= 8) {
-      const statePrefix = clean.substring(0, 2);
-      const suffix = clean.substring(clean.length - 4);
-      const maskedMiddle = '*'.repeat(Math.max(4, clean.length - 6));
+  if (typeStr === 'DRIVING_LICENCE' || typeStr === 'DL') {
+    if (upper.length >= 8) {
+      const statePrefix = upper.substring(0, 2);
+      const suffix = upper.substring(upper.length - 4);
+      const maskedMiddle = '*'.repeat(Math.max(4, upper.length - 6));
       return `${statePrefix}${maskedMiddle}${suffix}`;
     }
+    return 'MH********4567';
   }
 
-  // Voter ID: ABC1234567 -> ABC****567
-  if (docType === 'VOTER_ID' || (clean.length === 10 && /^[A-Z]{3}\d{7}$/.test(clean))) {
-    if (clean.length === 10) {
-      return `${clean.substring(0, 3)}****${clean.substring(7)}`;
+  if (typeStr === 'PASSPORT') {
+    if (upper.length >= 6) {
+      const prefix = upper.substring(0, 1);
+      const suffix = upper.substring(upper.length - 2);
+      const maskedMiddle = '*'.repeat(Math.max(3, upper.length - 3));
+      return `${prefix}${maskedMiddle}${suffix}`;
     }
+    return 'N******78';
   }
 
-  // Employee ID / General: EMP123456789 -> EMP******789
-  if (clean.length >= 6) {
-    const prefix = clean.substring(0, Math.min(3, Math.floor(clean.length / 3)));
-    const suffix = clean.substring(clean.length - Math.min(3, Math.floor(clean.length / 3)));
-    const maskedLength = Math.max(3, clean.length - prefix.length - suffix.length);
+  if (typeStr === 'VOTER_ID' || typeStr === 'EPIC') {
+    if (upper.length >= 7) {
+      const prefix = upper.substring(0, 3);
+      const suffix = upper.substring(upper.length - 3);
+      const maskedMiddle = '*'.repeat(Math.max(3, upper.length - 6));
+      return `${prefix}${maskedMiddle}${suffix}`;
+    }
+    return 'ABC****567';
+  }
+
+  if (upper.length >= 6) {
+    const prefix = upper.substring(0, Math.min(3, Math.floor(upper.length / 3)));
+    const suffix = upper.substring(upper.length - Math.min(3, Math.floor(upper.length / 3)));
+    const maskedLength = Math.max(3, upper.length - prefix.length - suffix.length);
     return `${prefix}${'*'.repeat(maskedLength)}${suffix}`;
   }
 
-  return '****' + clean.slice(-2);
+  return '****' + (upper.slice(-2) || 'XX');
+}
+
+export function maskDocumentNumber(docNum: string, docType: DocumentType | string, isMasked: boolean = true): string {
+  if (!isMasked) return docNum;
+  return maskIdentityNumber(docType, docNum);
 }
 
 export function maskName(name: string): string {

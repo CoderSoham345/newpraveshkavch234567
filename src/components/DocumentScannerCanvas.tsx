@@ -32,7 +32,13 @@ import {
   ScanValidationResult,
   DetectedQuad
 } from '../utils/cvEngine';
-import { requestCameraPermissions, takeNativePhoto } from '../utils/nativeCameraPermissions';
+import { 
+  initializeDocumentCamera, 
+  stopCameraStream, 
+  registerAppResumeListener, 
+  logCamera, 
+  takeNativePhoto 
+} from '../services/cameraService';
 import { CameraPermissionModal } from './CameraPermissionModal';
 
 interface DocumentScannerCanvasProps {
@@ -75,57 +81,33 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
   const initCamera = async () => {
     try {
       if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+        stopCameraStream(stream);
+        setStream(null);
       }
 
       setErrorMessage(null);
-      const permResult = await requestCameraPermissions();
-      if (!permResult.granted) {
+      
+      const initResult = await initializeDocumentCamera({ facingMode });
+
+      if (!initResult.permissionState.granted) {
         setCameraPermission('denied');
-        setErrorMessage(permResult.error || 'Camera permission denied. Please allow camera access in system settings.');
+        setErrorMessage(initResult.error || 'Camera permission denied. Please allow camera access.');
         return;
       }
 
       setCameraPermission('granted');
 
-      let mediaStream: MediaStream | null = null;
-      try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: { ideal: facingMode }, 
-            width: { ideal: 1920, min: 1280 }, 
-            height: { ideal: 1080, min: 720 },
-            advanced: [{ focusMode: 'continuous' }, { exposureMode: 'continuous' }] as any
-          },
-          audio: false,
-        });
-      } catch (e) {
-        try {
-          mediaStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
-            audio: false,
-          });
-        } catch (e2) {
-          mediaStream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false,
-          });
-        }
-      }
-
-      if (mediaStream) {
-        setStream(mediaStream);
+      if (initResult.stream) {
+        setStream(initResult.stream);
         if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream;
+          videoRef.current.srcObject = initResult.stream;
         }
+      } else {
+        setErrorMessage(initResult.error || 'Failed to initialize live camera.');
       }
     } catch (err: any) {
-      console.warn('Camera Stream Access Error:', err);
-      setErrorMessage(
-        err.name === 'NotAllowedError'
-          ? 'Camera stream blocked by browser or OS setting.'
-          : 'Camera hardware is busy or unavailable.'
-      );
+      logCamera(`Camera stream error:`, err);
+      setErrorMessage(err?.message || 'Camera stream is unavailable.');
     }
   };
 
@@ -139,9 +121,14 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
   useEffect(() => {
     initCamera();
 
+    const unregisterResume = registerAppResumeListener(() => {
+      initCamera();
+    });
+
     return () => {
+      unregisterResume();
       if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+        stopCameraStream(stream);
       }
     };
   }, [facingMode]);
@@ -175,6 +162,7 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
   // Execute Manual or Auto Capture
   const triggerCaptureAction = (resultToCapture: ScanValidationResult | null) => {
     if (!videoRef.current || isCapturing) return;
+    logCamera('Capture started');
     setIsCapturing(true);
 
     const video = videoRef.current;
@@ -196,6 +184,7 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
         croppedDataUrl = cropAndStraightenDocument(canvas, activeResult.quad.corners);
       }
 
+      logCamera('Capture successful');
       onCaptured(croppedDataUrl, qrData);
     }
     setIsCapturing(false);

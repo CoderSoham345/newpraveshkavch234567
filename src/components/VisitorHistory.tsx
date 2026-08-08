@@ -23,6 +23,7 @@ import {
   Maximize2
 } from 'lucide-react';
 import { VisitorRecord, VisitorStatus, AuditLogItem } from '../types';
+import { maskDocumentNumber } from '../utils/privacyUtils';
 import { SavedScansList } from './SavedScansList';
 import { printVisitorPassWindow, downloadVisitorPackage } from '../utils/documentStorage';
 
@@ -31,6 +32,7 @@ interface VisitorHistoryProps {
   onSelectVisitor: (visitor: VisitorRecord) => void;
   onUpdateStatus: (id: string, status: VisitorStatus) => void;
   onMarkExit?: (visitorId: string) => void;
+  onOpenCheckoutModal?: (visitor: VisitorRecord) => void;
   onDeleteVisitor?: (visitorId: string) => void;
   auditLogs?: AuditLogItem[];
   initialTab?: 'logs' | 'scans' | 'audit';
@@ -41,6 +43,7 @@ export const VisitorHistory: React.FC<VisitorHistoryProps> = ({
   onSelectVisitor,
   onUpdateStatus,
   onMarkExit,
+  onOpenCheckoutModal,
   onDeleteVisitor,
   auditLogs = [],
   initialTab = 'logs',
@@ -318,7 +321,13 @@ export const VisitorHistory: React.FC<VisitorHistoryProps> = ({
                       {/* ID Document */}
                       <td className="p-3.5">
                         <p className="font-semibold text-slate-200">{visitor.documentType}</p>
-                        <p className="font-mono text-[11px] text-slate-400">{visitor.documentNumber}</p>
+                        <p className="font-mono text-[11px] text-slate-400">
+                          {maskDocumentNumber(
+                            visitor.documentNumber,
+                            visitor.documentType,
+                            visitor.privacyMode ? visitor.privacyMode === 'masked' : (visitor.isMaskedAadhaar !== false)
+                          )}
+                        </p>
                       </td>
 
                       {/* Resident Host */}
@@ -364,14 +373,14 @@ export const VisitorHistory: React.FC<VisitorHistoryProps> = ({
                       {/* Actions Column */}
                       <td className="p-3.5 text-center">
                         <div className="flex items-center justify-center gap-2">
-                          {(visitor.status === 'CHECKED_IN' || visitor.status === 'APPROVED') && onMarkExit && (
+                          {(visitor.status === 'CHECKED_IN' || visitor.status === 'APPROVED' || visitor.status === 'ACTIVE') && (
                             <button
-                              onClick={() => onMarkExit(visitor.id)}
+                              onClick={() => onOpenCheckoutModal ? onOpenCheckoutModal(visitor) : (onMarkExit && onMarkExit(visitor.id))}
                               className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all shadow"
-                              title="Mark Visitor Exit"
+                              title="Mark Visitor Exit / Checkout"
                               id={`btn-table-exit-${visitor.id}`}
                             >
-                              Mark Exit
+                              Check Out
                             </button>
                           )}
 
@@ -498,7 +507,7 @@ export const VisitorHistory: React.FC<VisitorHistoryProps> = ({
                 {profileModalVisitor.email && <p><span className="text-slate-400">Email:</span> <strong className="text-cyan-300">{profileModalVisitor.email}</strong></p>}
                 {profileModalVisitor.company && <p><span className="text-slate-400">Company:</span> <strong className="text-white">{profileModalVisitor.company}</strong></p>}
                 <p><span className="text-slate-400">Document Type:</span> <strong className="text-white">{profileModalVisitor.documentType}</strong></p>
-                <p><span className="text-slate-400">Document Number:</span> <strong className="text-white font-mono">{profileModalVisitor.documentNumber}</strong></p>
+                <p><span className="text-slate-400">Document Number:</span> <strong className="text-white font-mono">{maskDocumentNumber(profileModalVisitor.documentNumber, profileModalVisitor.documentType, profileModalVisitor.privacyMode ? profileModalVisitor.privacyMode === 'masked' : (profileModalVisitor.isMaskedAadhaar !== false))}</strong></p>
                 {profileModalVisitor.address && <p><span className="text-slate-400">Address:</span> <strong className="text-white">{profileModalVisitor.address}</strong></p>}
               </div>
 

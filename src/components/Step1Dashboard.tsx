@@ -26,6 +26,7 @@ interface Step1DashboardProps {
   onStartVerification: () => void;
   onNavigateTab: (tab: 'scanner' | 'history' | 'residents' | 'reports' | 'admin') => void;
   onMarkExit?: (visitorId: string) => void;
+  onOpenCheckoutModal?: (visitor: VisitorRecord) => void;
 }
 
 export const Step1Dashboard: React.FC<Step1DashboardProps> = ({
@@ -35,9 +36,10 @@ export const Step1Dashboard: React.FC<Step1DashboardProps> = ({
   onStartVerification,
   onNavigateTab,
   onMarkExit,
+  onOpenCheckoutModal,
 }) => {
   const activeInsideVisitors = recentVisitors.filter(
-    (v) => v.status === 'CHECKED_IN' || v.status === 'APPROVED'
+    (v) => v.status === 'ACTIVE' || v.status === 'CHECKED_IN' || v.status === 'APPROVED'
   );
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
@@ -169,33 +171,46 @@ export const Step1Dashboard: React.FC<Step1DashboardProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {activeInsideVisitors.map((v) => (
-              <div key={v.id} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 shadow">
-                <div className="flex items-center gap-2.5 min-w-0">
+              <div key={v.id} className="p-4 rounded-xl bg-slate-950 border border-emerald-500/30 flex items-center justify-between gap-3 shadow-lg">
+                <div className="flex items-start gap-3 min-w-0">
                   {v.liveFaceUrl ? (
-                    <img src={v.liveFaceUrl} alt={v.visitorName} className="w-9 h-9 rounded-full object-cover border border-emerald-500/40 shrink-0" />
+                    <img src={v.liveFaceUrl} alt={v.visitorName} className="w-11 h-11 rounded-xl object-cover border-2 border-emerald-500/50 shrink-0" />
                   ) : (
-                    <div className="w-9 h-9 rounded-full bg-slate-800 text-emerald-400 font-extrabold flex items-center justify-center shrink-0 border border-emerald-500/30">
+                    <div className="w-11 h-11 rounded-xl bg-slate-800 text-emerald-400 font-extrabold flex items-center justify-center shrink-0 border border-emerald-500/40">
                       {v.visitorName[0]}
                     </div>
                   )}
-                  <div className="truncate">
-                    <p className="font-bold text-white text-xs truncate">{v.visitorName}</p>
-                    <p className="text-[11px] text-slate-400 truncate">Host: {v.residentName} ({v.buildingUnit})</p>
-                    <p className="text-[10px] text-cyan-400 font-mono mt-0.5">
-                      Check-in: {v.checkInAt ? new Date(v.checkInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'}
+                  <div className="truncate space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-extrabold text-white text-xs truncate">{v.visitorName}</p>
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0 uppercase">
+                        ACTIVE
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-cyan-400 font-mono font-bold">Visit ID: {v.visitId || v.passNumber}</p>
+                    <p className="text-[11px] text-slate-300 truncate">Host: {v.residentName} ({v.buildingUnit})</p>
+                    <p className="text-[10px] text-slate-400 truncate">Purpose: {v.purpose}</p>
+                    <p className="text-[10px] text-slate-400 font-mono">
+                      Entry: {v.checkInAt ? new Date(v.checkInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date(v.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {v.gateName || 'Gate 01'}
                     </p>
                   </div>
                 </div>
 
-                {onMarkExit && (
+                <div className="flex flex-col gap-1.5 shrink-0">
                   <button
-                    onClick={() => onMarkExit(v.id)}
-                    className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold text-xs shrink-0 transition-all flex items-center gap-1 shadow"
+                    onClick={() => {
+                      if (onOpenCheckoutModal) {
+                        onOpenCheckoutModal(v);
+                      } else if (onMarkExit) {
+                        onMarkExit(v.id);
+                      }
+                    }}
+                    className="px-3 py-2 rounded-lg bg-gradient-to-r from-rose-500 to-amber-600 hover:from-rose-400 hover:to-amber-500 text-white font-black text-xs shrink-0 transition-all flex items-center gap-1 shadow shadow-rose-500/20"
                     id={`btn-mark-exit-${v.id}`}
                   >
-                    <span>Mark Exit</span>
+                    <span>CHECK OUT</span>
                   </button>
-                )}
+                </div>
               </div>
             ))}
           </div>

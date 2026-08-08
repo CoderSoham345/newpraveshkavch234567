@@ -17,6 +17,7 @@ import { ResidentsDirectory } from '../components/ResidentsDirectory';
 import { ReportsAnalytics } from '../components/ReportsAnalytics';
 import { AdminSettings } from '../components/AdminSettings';
 import { AIChatbot } from '../components/chatbot/AIChatbot';
+import { CheckoutModal } from '../components/CheckoutModal';
 import { 
   WorkflowStep, 
   DocumentType, 
@@ -93,6 +94,13 @@ export function SecurityGuardWorkflow() {
   const [frontDocImage, setFrontDocImage] = useState<string>('');
   const [backDocImage, setBackDocImage] = useState<string>('');
   const [liveFaceImage, setLiveFaceImage] = useState<string>('');
+  const [checkoutVisitor, setCheckoutVisitor] = useState<VisitorRecord | null>(null);
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState<boolean>(false);
+
+  const handleOpenCheckoutModal = (visitor: VisitorRecord) => {
+    setCheckoutVisitor(visitor);
+    setIsCheckoutModalOpen(true);
+  };
   const [extractedData, setExtractedData] = useState<ExtractedDocData>({
     fullName: '',
     dob: '',
@@ -505,7 +513,7 @@ export function SecurityGuardWorkflow() {
 
   const handleCheckOutPass = async () => {
     if (!currentVisitorRecord) return;
-    await handleMarkExit(currentVisitorRecord.id);
+    handleOpenCheckoutModal(currentVisitorRecord);
   };
 
   const handleMarkExit = async (visitorId: string) => {
@@ -587,6 +595,7 @@ export function SecurityGuardWorkflow() {
               onStartVerification={handleStartWorkflow}
               onNavigateTab={setActiveTab}
               onMarkExit={handleMarkExit}
+              onOpenCheckoutModal={handleOpenCheckoutModal}
             />
           )}
 
@@ -677,6 +686,7 @@ export function SecurityGuardWorkflow() {
               visitors={visitors}
               auditLogs={auditLogs}
               onMarkExit={handleMarkExit}
+              onOpenCheckoutModal={handleOpenCheckoutModal}
               onSelectVisitor={(visitor) => {
                 setCurrentVisitorRecord(visitor);
                 setActiveTab('scanner');
@@ -831,6 +841,14 @@ export function SecurityGuardWorkflow() {
           </button>
         </div>
       )}
+
+      {/* Checkout Confirmation & Receipt Modal */}
+      <CheckoutModal
+        isOpen={isCheckoutModalOpen}
+        visitor={checkoutVisitor}
+        onClose={() => setIsCheckoutModalOpen(false)}
+        onConfirmCheckout={handleMarkExit}
+      />
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
 import { DocumentType, AadhaarPrivacySettings } from '../types';
 import { DocumentScannerCanvas } from './DocumentScannerCanvas';
 import { AadhaarPrivacyModal } from './AadhaarPrivacyModal';
+import { getDocumentPrivacyConfig } from '../utils/documentPrivacyConfig';
 
 interface Step2ScanFrontProps {
   selectedDocType: DocumentType;
@@ -144,9 +145,7 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
             onChange={(e) => {
               const newType = e.target.value as DocumentType;
               setSelectedDocType(newType);
-              if (newType === 'AADHAAR_FRONT' || newType === 'AADHAAR_BACK') {
-                setShowPrivacyModal(true);
-              }
+              setShowPrivacyModal(true);
             }}
             className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-semibold focus:border-cyan-400 focus:outline-none"
             id="select-doc-type-front"
@@ -165,14 +164,14 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
             <Lock className="w-4 h-4 text-cyan-400" />
             <div>
               <span className="text-xs font-bold text-white block">
-                {selectedDocType.includes('AADHAAR') 
-                  ? (aadhaarSettings.useMaskedAadhaar ? 'Masked Aadhaar Active' : 'Full Aadhaar Mode')
-                  : 'Privacy Mode Enabled'}
+                {aadhaarSettings.useMaskedAadhaar
+                  ? `Masked ${getDocumentPrivacyConfig(selectedDocType).displayName} Active`
+                  : `Full ${getDocumentPrivacyConfig(selectedDocType).displayName} Mode`}
               </span>
               <span className="text-[10px] text-slate-400 font-mono">
-                {selectedDocType.includes('AADHAAR')
-                  ? (aadhaarSettings.useMaskedAadhaar ? 'XXXX XXXX 9123' : '1234 5678 9123')
-                  : 'Visitor controls visibility'}
+                {aadhaarSettings.useMaskedAadhaar
+                  ? getDocumentPrivacyConfig(selectedDocType).maskedPreviewExample
+                  : getDocumentPrivacyConfig(selectedDocType).fullPreviewExample}
               </span>
             </div>
           </div>
@@ -180,7 +179,7 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
           <button
             type="button"
             onClick={() => setShowPrivacyModal(true)}
-            className="px-2.5 py-1 rounded bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-[10px] font-extrabold uppercase transition-colors"
+            className="px-2.5 py-1 rounded bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-[10px] font-extrabold uppercase transition-colors cursor-pointer"
           >
             Edit Privacy
           </button>
@@ -241,9 +240,10 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
         </div>
       )}
 
-      {/* Aadhaar Privacy Selection Modal */}
+      {/* Document Privacy Selection Modal */}
       <AadhaarPrivacyModal
         isOpen={showPrivacyModal}
+        documentType={selectedDocType}
         settings={aadhaarSettings}
         onSelectOption={(useMasked) => {
           if (onUpdateAadhaarSettings) {

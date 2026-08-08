@@ -18,6 +18,7 @@ import {
   FolderDown
 } from 'lucide-react';
 import { VisitorRecord } from '../types';
+import { maskDocumentNumber } from '../utils/privacyUtils';
 import { SaveDocumentModal } from './SaveDocumentModal';
 
 interface Step8ApprovalResultProps {
@@ -35,46 +36,93 @@ export const Step8ApprovalResult: React.FC<Step8ApprovalResultProps> = ({
 }) => {
   const [copied, setCopied] = useState<boolean>(false);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState<boolean>(false);
+  const [printSuccessAlert, setPrintSuccessAlert] = useState<boolean>(false);
 
-  const isApproved = visitor.status === 'APPROVED' || visitor.status === 'CHECKED_IN' || visitor.status === 'CHECKED_OUT';
+  const isApproved = visitor.status === 'APPROVED' || visitor.status === 'ACTIVE' || visitor.status === 'CHECKED_IN' || visitor.status === 'CHECKED_OUT';
+  const visitIdStr = visitor.visitId || visitor.passNumber;
 
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
-        title: `PraveshKavach™ - Visitor Pass ${visitor.passNumber}`,
+        title: `PraveshKavach™ - Visitor Pass ${visitIdStr}`,
         text: `Visitor Pass approved for ${visitor.visitorName} visiting ${visitor.residentName}`,
         url: window.location.href,
       }).catch(() => {});
     } else {
-      navigator.clipboard.writeText(`Pass Number: ${visitor.passNumber} | Visitor: ${visitor.visitorName}`);
+      navigator.clipboard.writeText(`Pass Number: ${visitIdStr} | Visitor: ${visitor.visitorName}`);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
   };
 
   const handlePrint = () => {
+    setPrintSuccessAlert(true);
     window.print();
+    setTimeout(() => setPrintSuccessAlert(false), 4000);
   };
+
+  const isMasked = visitor.privacyMode === 'masked' || visitor.isMaskedAadhaar !== false;
+  const maskedDocNumber = maskDocumentNumber(visitor.documentNumber, visitor.documentType, isMasked);
+
+  const entryDateStr = visitor.checkInAt ? new Date(visitor.checkInAt).toLocaleDateString() : new Date(visitor.createdAt).toLocaleDateString();
+  const entryTimeStr = visitor.checkInAt ? new Date(visitor.checkInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date(visitor.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-6">
       
-      {/* Result Status Banner */}
+      {/* Print Success Confirmation Toast */}
+      {printSuccessAlert && (
+        <div className="bg-emerald-500/20 border-2 border-emerald-500 text-emerald-300 p-3.5 rounded-xl text-xs font-bold flex items-center justify-between shadow-lg animate-pulse print:hidden">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            <span>✔ Visitor pass generated & dispatched to printer successfully.</span>
+          </div>
+          <span className="text-[10px] bg-emerald-500/30 px-2 py-0.5 rounded text-emerald-200 uppercase">ACTIVE PASSHOLDER</span>
+        </div>
+      )}
+
+      {/* Result Status Banner - Entry Acceptance Screen */}
       {isApproved ? (
-        <div className="bg-gradient-to-r from-emerald-950 via-teal-950 to-slate-900 border-2 border-emerald-500/50 p-6 rounded-2xl text-center space-y-3 shadow-2xl relative overflow-hidden">
+        <div className="bg-gradient-to-r from-emerald-950 via-teal-950 to-slate-900 border-2 border-emerald-500/50 p-6 rounded-2xl text-center space-y-4 shadow-2xl relative overflow-hidden print:hidden">
           <div className="w-16 h-16 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/30">
             <CheckCircle2 className="w-10 h-10" />
           </div>
-          <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-500 text-slate-950 uppercase tracking-widest">
-            VISITOR APPROVED!
-          </span>
-          <h2 className="text-2xl font-black text-white">ACCESS GRANTED</h2>
-          <p className="text-xs text-emerald-300">
-            Resident {visitor.residentName} has approved entry for {visitor.visitorName}.
-          </p>
+          <div>
+            <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-500 text-slate-950 uppercase tracking-widest">
+              ENTRY APPROVED
+            </span>
+            <h2 className="text-2xl font-black text-white mt-1">ACCESS GRANTED</h2>
+            <p className="text-xs text-emerald-300 mt-0.5">
+              Visitor verification completed successfully.
+            </p>
+          </div>
+
+          {/* 5-Point Verification Checklist Badges */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-emerald-500/20 text-[11px] font-bold text-emerald-300">
+            <div className="bg-emerald-900/40 p-2 rounded-lg border border-emerald-500/30 flex items-center justify-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Identity Verified</span>
+            </div>
+            <div className="bg-emerald-900/40 p-2 rounded-lg border border-emerald-500/30 flex items-center justify-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Document Verified</span>
+            </div>
+            <div className="bg-emerald-900/40 p-2 rounded-lg border border-emerald-500/30 flex items-center justify-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Face Verified</span>
+            </div>
+            <div className="bg-emerald-900/40 p-2 rounded-lg border border-emerald-500/30 flex items-center justify-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Details Confirmed</span>
+            </div>
+            <div className="bg-emerald-900/40 p-2 rounded-lg border border-emerald-500/30 flex items-center justify-center gap-1 col-span-2 sm:col-span-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Entry Approved</span>
+            </div>
+          </div>
         </div>
       ) : (
-        <div className="bg-gradient-to-r from-rose-950 via-red-950 to-slate-900 border-2 border-rose-500/50 p-6 rounded-2xl text-center space-y-3 shadow-2xl">
+        <div className="bg-gradient-to-r from-rose-950 via-red-950 to-slate-900 border-2 border-rose-500/50 p-6 rounded-2xl text-center space-y-3 shadow-2xl print:hidden">
           <div className="w-16 h-16 rounded-full bg-rose-500 text-white flex items-center justify-center mx-auto shadow-lg shadow-rose-500/30">
             <XCircle className="w-10 h-10" />
           </div>
@@ -88,9 +136,65 @@ export const Step8ApprovalResult: React.FC<Step8ApprovalResultProps> = ({
         </div>
       )}
 
-      {/* Digital Visitor Pass Card (Printable) */}
+      {/* Printable Document Container for Thermal / A4 Printers */}
       {isApproved && (
-        <div className="bg-slate-900 border-2 border-blue-500/40 rounded-2xl p-6 shadow-2xl space-y-6 relative print:border-black print:bg-white print:text-black">
+        <div className="hidden print:block printable-document bg-white text-black p-6 border-2 border-black max-w-xl mx-auto">
+          <div className="text-center border-b-2 border-black pb-3 mb-3">
+            <h1 className="text-xl font-black uppercase tracking-wider">PRAVESHKAVACH™</h1>
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-800">OFFICIAL VISITOR ENTRY PASS</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-xs font-mono my-3 border-b border-black pb-3">
+            <div>
+              <span className="font-bold block text-[9px] text-slate-500 uppercase">VISIT ID</span>
+              <span className="font-black text-sm">{visitIdStr}</span>
+            </div>
+            <div>
+              <span className="font-bold block text-[9px] text-slate-500 uppercase">STATUS</span>
+              <span className="font-black text-xs text-black uppercase">ACTIVE</span>
+            </div>
+            <div>
+              <span className="font-bold block text-[9px] text-slate-500 uppercase">VISITOR NAME</span>
+              <span className="font-bold">{visitor.visitorName}</span>
+            </div>
+            <div>
+              <span className="font-bold block text-[9px] text-slate-500 uppercase">IDENTITY</span>
+              <span className="font-bold">{visitor.documentType} ({maskedDocNumber})</span>
+            </div>
+            <div>
+              <span className="font-bold block text-[9px] text-slate-500 uppercase">PURPOSE</span>
+              <span>{visitor.purpose}</span>
+            </div>
+            <div>
+              <span className="font-bold block text-[9px] text-slate-500 uppercase">HOST / PERSON TO VISIT</span>
+              <span>{visitor.residentName} ({visitor.buildingUnit})</span>
+            </div>
+            <div>
+              <span className="font-bold block text-[9px] text-slate-500 uppercase">ENTRY DATE</span>
+              <span>{entryDateStr}</span>
+            </div>
+            <div>
+              <span className="font-bold block text-[9px] text-slate-500 uppercase">ENTRY TIME</span>
+              <span>{entryTimeStr}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-black text-[10px] font-mono">
+            <div>
+              <p>Gate: {visitor.gateName || 'Main Gate 01'}</p>
+              <p>Guard: {visitor.guardName || 'Security Guard'}</p>
+            </div>
+            <div className="text-right">
+              <p className="font-bold">{visitIdStr}</p>
+              <p className="text-[9px]">Scannable Visit Pass</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Screen Digital Visitor Pass Card */}
+      {isApproved && (
+        <div className="bg-slate-900 border-2 border-blue-500/40 rounded-2xl p-6 shadow-2xl space-y-6 relative print:hidden">
           
           {/* Pass Header */}
           <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -107,12 +211,12 @@ export const Step8ApprovalResult: React.FC<Step8ApprovalResultProps> = ({
             </div>
 
             <div className="text-right">
-              <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block">Pass No</span>
-              <span className="font-mono text-sm font-black text-cyan-400">{visitor.passNumber}</span>
+              <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block">Visit ID / Pass No</span>
+              <span className="font-mono text-sm font-black text-cyan-400">{visitIdStr}</span>
             </div>
           </div>
 
-          {/* Pass Body: Photo + Details + QR Code */}
+          {/* Pass Body: Photo + Details + Safe QR Code */}
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-6 items-center">
             
             {/* Visitor Photo & Details */}
@@ -123,7 +227,7 @@ export const Step8ApprovalResult: React.FC<Step8ApprovalResultProps> = ({
                 className="w-20 h-24 rounded-xl object-cover border-2 border-cyan-400 shadow-md shrink-0"
               />
 
-              <div className="space-y-1.5 text-xs">
+              <div className="space-y-2 text-xs">
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Visitor Name</span>
                   <p className="font-extrabold text-sm text-white">{visitor.visitorName}</p>
@@ -131,28 +235,46 @@ export const Step8ApprovalResult: React.FC<Step8ApprovalResultProps> = ({
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">ID Type</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Document Type</span>
                     <p className="font-semibold text-slate-200">{visitor.documentType}</p>
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">ID Number</span>
-                    <p className="font-mono font-bold text-cyan-300">{visitor.documentNumber}</p>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Masked Identity</span>
+                    <p className="font-mono font-bold text-cyan-300">
+                      {maskedDocNumber}
+                    </p>
                   </div>
                 </div>
 
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Resident Host</span>
-                  <p className="font-bold text-emerald-400">{visitor.residentName} ({visitor.buildingUnit})</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Host / Person to Visit</span>
+                    <p className="font-bold text-emerald-400">{visitor.residentName} ({visitor.buildingUnit})</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Purpose of Visit</span>
+                    <p className="font-semibold text-slate-200">{visitor.purpose}</p>
+                  </div>
                 </div>
 
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Visit Purpose</span>
-                  <p className="font-semibold text-slate-200">{visitor.purpose}</p>
+                <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-800 text-[11px]">
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase">Entry Date</span>
+                    <p className="font-mono font-semibold text-slate-300">{entryDateStr}</p>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase">Entry Time</span>
+                    <p className="font-mono font-semibold text-slate-300">{entryTimeStr}</p>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase">Gate / Officer</span>
+                    <p className="font-bold text-slate-300">{visitor.gateName || 'Gate 01'}</p>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* QR Code & Barcode */}
+            {/* Safe QR Code (Contains ONLY visitId reference - NO raw Aadhaar/PAN) */}
             <div className="sm:col-span-4 bg-slate-950 p-4 rounded-xl border border-slate-800 text-center space-y-2 flex flex-col items-center justify-center">
               <div className="bg-white p-2.5 rounded-lg shadow-inner">
                 {/* SVG Mock QR Code */}
@@ -179,8 +301,8 @@ export const Step8ApprovalResult: React.FC<Step8ApprovalResultProps> = ({
               </div>
 
               <div className="text-center">
-                <p className="font-mono text-[10px] text-slate-400 font-bold tracking-widest">{visitor.qrCodeValue}</p>
-                <p className="text-[9px] text-emerald-400 font-bold uppercase mt-0.5">Scannable Gate Pass</p>
+                <p className="font-mono text-[10px] text-cyan-400 font-bold tracking-widest">{visitIdStr}</p>
+                <p className="text-[9px] text-slate-400 font-bold uppercase mt-0.5">Safe Reference QR</p>
               </div>
             </div>
 
@@ -206,7 +328,7 @@ export const Step8ApprovalResult: React.FC<Step8ApprovalResultProps> = ({
                 id="btn-print-pass"
               >
                 <Printer className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Print Pass</span>
+                <span>PRINT VISITOR PASS</span>
               </button>
 
               <button
@@ -220,7 +342,7 @@ export const Step8ApprovalResult: React.FC<Step8ApprovalResultProps> = ({
             </div>
 
             {/* Check-In / Check-Out Controls */}
-            {visitor.status === 'APPROVED' && (
+            {(visitor.status === 'APPROVED' || visitor.status === 'ACTIVE') && (
               <button
                 onClick={onCheckIn}
                 className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-2"

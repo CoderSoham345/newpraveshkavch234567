@@ -22,7 +22,8 @@ import { DOCUMENT_SCHEMAS, getDocumentSchema, validateAndComputeFieldConfidences
 import { SaveDocumentModal } from './SaveDocumentModal';
 import { PrivacyControlModal } from './PrivacyControlModal';
 import { AadhaarPrivacyModal } from './AadhaarPrivacyModal';
-import { DEFAULT_VISITOR_PRIVACY_PREFERENCES } from '../utils/privacyUtils';
+import { DEFAULT_VISITOR_PRIVACY_PREFERENCES, maskIdentityNumber } from '../utils/privacyUtils';
+import { getDocumentPrivacyConfig } from '../utils/documentPrivacyConfig';
 
 interface Step3VerifyFrontProps {
   frontImage: string;
@@ -223,19 +224,29 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
               <div>
                 <span className="font-bold text-white block">Visitor Control Status</span>
                 <span className="text-[11px] text-slate-400">
-                  {validatedData.documentType.includes('AADHAAR') && (aadhaarSettings.useMaskedAadhaar ? 'Masked Aadhaar (XXXX XXXX 1234)' : 'Full Aadhaar')}
+                  {(extractedData.privacyMode ? extractedData.privacyMode === 'masked' : aadhaarSettings.useMaskedAadhaar)
+                    ? `Masked ${getDocumentPrivacyConfig(validatedData.documentType).displayName} (${maskIdentityNumber(validatedData.documentType, validatedData.documentNumber)})`
+                    : `Full ${getDocumentPrivacyConfig(validatedData.documentType).displayName}`}
                   {' • '}
                   {Object.values(privacyPrefs).filter(v => v === 'HIDDEN').length} field(s) hidden for privacy
                 </span>
               </div>
             </div>
 
-            <button
-              onClick={() => setIsPrivacyModalOpen(true)}
-              className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded bg-slate-900 border border-slate-700 text-cyan-400 hover:text-cyan-300"
-            >
-              Configure
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsAadhaarModalOpen(true)}
+                className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded bg-cyan-950/80 border border-cyan-800 text-cyan-300 hover:text-cyan-200 cursor-pointer"
+              >
+                Document Privacy
+              </button>
+              <button
+                onClick={() => setIsPrivacyModalOpen(true)}
+                className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded bg-slate-900 border border-slate-700 text-slate-300 hover:text-white cursor-pointer"
+              >
+                Field Visibility
+              </button>
+            </div>
           </div>
 
           {/* Raw OCR Text Viewer Mode */}
@@ -409,15 +420,20 @@ DOB: ${validatedData.dob || 'Not Detected'}`}
         onClose={() => setIsPrivacyModalOpen(false)}
       />
 
-      {/* Aadhaar Privacy Selection Modal */}
+      {/* Document Privacy Selection Modal */}
       <AadhaarPrivacyModal
         isOpen={isAadhaarModalOpen}
+        documentType={validatedData.documentType}
         settings={aadhaarSettings}
+        privacyMode={extractedData.privacyMode}
+        identityValue={validatedData.documentNumber}
         onSelectOption={(useMasked) => {
+          const isMaskedBool = typeof useMasked === 'boolean' ? useMasked : useMasked === 'masked';
           setExtractedData({
             ...extractedData,
-            aadhaarPrivacy: { useMaskedAadhaar: useMasked },
-            isMaskedAadhaar: useMasked,
+            privacyMode: isMaskedBool ? 'masked' : 'unmasked',
+            aadhaarPrivacy: { useMaskedAadhaar: isMaskedBool },
+            isMaskedAadhaar: isMaskedBool,
           });
         }}
         onConfirm={() => setIsAadhaarModalOpen(false)}

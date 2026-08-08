@@ -59,15 +59,22 @@ export type WorkflowStep =
 export type VisitorStatus = 
   | 'PENDING'
   | 'APPROVED'
+  | 'ACTIVE'
   | 'REJECTED'
   | 'CHECKED_IN'
   | 'CHECKED_OUT'
   | 'CANCELLED';
 
 export type VisibilityMode = 'VISIBLE' | 'HIDDEN' | 'MASKED';
+export type PrivacyMode = 'masked' | 'unmasked';
 
 export interface AadhaarPrivacySettings {
   useMaskedAadhaar: boolean; // true = Masked Aadhaar (XXXX XXXX 1234), false = Full Aadhaar
+}
+
+export interface DocumentPrivacySettings {
+  privacyMode: PrivacyMode; // 'masked' | 'unmasked'
+  documentType: DocumentType;
 }
 
 export interface VisitorPrivacyPreferences {
@@ -116,6 +123,9 @@ export interface ExtractedDocData {
   lowConfidenceFields: string[];
   
   // Privacy Preferences
+  privacyMode?: PrivacyMode; // 'masked' | 'unmasked'
+  identityValue?: string; // Original raw OCR value
+  displayIdentityValue?: string; // Display value formatted according to privacyMode
   aadhaarPrivacy?: AadhaarPrivacySettings;
   privacyPreferences?: VisitorPrivacyPreferences;
   isMaskedAadhaar?: boolean;
@@ -181,6 +191,7 @@ export interface Resident {
 
 export interface VisitorRecord {
   id: string;
+  visitId?: string;
   passNumber: string;
   visitorName: string;
   phone: string;
@@ -205,6 +216,9 @@ export interface VisitorRecord {
   rejectedAt?: string;
   checkInAt?: string;
   checkOutAt?: string;
+  entryTime?: string;
+  exitTime?: string;
+  checkedOutBy?: string;
   visitDuration?: string;
   visitDurationMinutes?: number;
   gateName: string;
@@ -215,6 +229,9 @@ export interface VisitorRecord {
   email?: string;
   company?: string;
   privacyPreferences?: VisitorPrivacyPreferences;
+  privacyMode?: PrivacyMode;
+  identityValue?: string;
+  displayIdentityValue?: string;
   aadhaarPrivacy?: AadhaarPrivacySettings;
   isMaskedAadhaar?: boolean;
   maskedDocumentNumber?: string;

@@ -187,14 +187,16 @@ export const Step6Summary: React.FC<Step6SummaryProps> = ({
               <div>
                 <span className="text-slate-400 font-semibold block text-[11px] uppercase flex items-center gap-1">
                   <span>Doc Number</span>
-                  {(extractedData.isMaskedAadhaar || extractedData.aadhaarPrivacy?.useMaskedAadhaar) && (
+                  {(extractedData.privacyMode ? extractedData.privacyMode === 'masked' : (extractedData.aadhaarPrivacy?.useMaskedAadhaar !== false && extractedData.isMaskedAadhaar !== false)) && (
                     <span className="text-[10px] text-cyan-400 font-bold bg-cyan-950/80 px-1.5 rounded">MASKED</span>
                   )}
                 </span>
                 <p className="font-bold text-cyan-300 font-mono">
-                  {extractedData.aadhaarPrivacy?.useMaskedAadhaar || extractedData.isMaskedAadhaar
-                    ? maskDocumentNumber(extractedData.documentNumber, extractedData.documentType, true)
-                    : extractedData.documentNumber}
+                  {maskDocumentNumber(
+                    extractedData.documentNumber,
+                    extractedData.documentType,
+                    extractedData.privacyMode ? extractedData.privacyMode === 'masked' : (extractedData.aadhaarPrivacy?.useMaskedAadhaar !== false && extractedData.isMaskedAadhaar !== false)
+                  )}
                 </p>
               </div>
             </div>
