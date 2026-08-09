@@ -33,6 +33,7 @@ import {
   logCamera,
   requestCameraPermissions,
   openAppSettings,
+  takeNativePhoto,
   CameraPermissionStatus
 } from '../services/cameraService';
 
@@ -119,6 +120,16 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
       logCamera(`Camera stream error:`, err);
       setCameraState('CAMERA_ERROR');
       setErrorMessage(err?.message || 'Camera stream is unavailable.');
+    }
+  };
+
+  const handleNativeCameraFallback = async () => {
+    logCamera('User clicked Native Camera fallback');
+    const photoDataUrl = await takeNativePhoto();
+    if (photoDataUrl) {
+      setCapturedImage(photoDataUrl);
+      setCameraState('CAPTURED');
+      handleStopCamera();
     }
   };
 
@@ -544,6 +555,16 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
           >
             <RefreshCw className="w-4 h-4" />
             <span>TRY AGAIN</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleNativeCameraFallback}
+            className="flex-1 py-3 px-4 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold border border-amber-300 shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer"
+            id="btn-permission-native-camera"
+          >
+            <Camera className="w-4 h-4" />
+            <span>USE NATIVE CAMERA</span>
           </button>
 
           <button

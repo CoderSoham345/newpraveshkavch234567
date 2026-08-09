@@ -12,6 +12,7 @@ export {
   registerAppResumeListener,
   logCamera,
   getPlatform,
+  takeNativePhoto,
 } from '../services/cameraService';
 
 export type { 

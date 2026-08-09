@@ -6,6 +6,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 
 export interface CameraPermissionState {
   granted: boolean;
@@ -59,6 +60,20 @@ export function getPlatform(): 'android' | 'ios' | 'web' {
 export async function checkCameraPermissions(): Promise<CameraPermissionState> {
   logCamera(`Checking camera permission`);
 
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const capPerm = await Camera.checkPermissions();
+      logCamera(`Capacitor native camera permission check:`, capPerm);
+      if (capPerm.camera === 'granted') {
+        return { granted: true, denied: false, prompt: false };
+      } else if (capPerm.camera === 'denied') {
+        return { granted: false, denied: true, prompt: false };
+      }
+    } catch (e) {
+      logCamera(`Capacitor checkPermissions exception:`, e);
+    }
+  }
+
   if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
     try {
       const res = await navigator.permissions.query({ name: 'camera' as any });
@@ -77,7 +92,7 @@ export async function checkCameraPermissions(): Promise<CameraPermissionState> {
 }
 
 /**
- * Requests camera permission via getUserMedia.
+ * Requests camera permission via Capacitor Camera plugin and getUserMedia.
  * In Capacitor Android WebView, this triggers the native Android runtime permission dialog.
  */
 let activeRequestPromise: Promise<CameraPermissionState> | null = null;
@@ -88,7 +103,26 @@ export async function requestCameraPermissions(): Promise<CameraPermissionState>
   }
 
   activeRequestPromise = (async () => {
-    logCamera(`Requesting camera permission via getUserMedia...`);
+    logCamera(`Requesting camera permission...`);
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const capReq = await Camera.requestPermissions({ permissions: ['camera'] });
+        logCamera(`Capacitor requestPermissions result:`, capReq);
+        if (capReq.camera === 'granted') {
+          return { granted: true, denied: false, prompt: false };
+        } else if (capReq.camera === 'denied') {
+          return {
+            granted: false,
+            denied: true,
+            prompt: false,
+            error: 'Camera permission was denied. Please allow camera access in Android system settings.',
+          };
+        }
+      } catch (e) {
+        logCamera(`Capacitor requestPermissions error:`, e);
+      }
+    }
 
     if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
       try {
@@ -97,7 +131,7 @@ export async function requestCameraPermissions(): Promise<CameraPermissionState>
           audio: false,
         });
         testStream.getTracks().forEach((track) => track.stop());
-        logCamera(`Camera permission granted`);
+        logCamera(`getUserMedia camera permission granted`);
         return { granted: true, denied: false, prompt: false };
       } catch (err: any) {
         logCamera(`getUserMedia permission error:`, err);
@@ -124,6 +158,25 @@ export async function requestCameraPermissions(): Promise<CameraPermissionState>
     return await activeRequestPromise;
   } finally {
     activeRequestPromise = null;
+  }
+}
+
+/**
+ * Native Camera Photo Fallback via @capacitor/camera
+ */
+export async function takeNativePhoto(): Promise<string | null> {
+  logCamera(`Taking native camera photo via Capacitor Camera plugin...`);
+  try {
+    const image = await Camera.getPhoto({
+      quality: 90,
+      allowEditing: false,
+      resultType: CameraResultType.DataUrl,
+      source: CameraSource.Camera,
+    });
+    return image.dataUrl || null;
+  } catch (err) {
+    logCamera(`Native camera getPhoto error:`, err);
+    return null;
   }
 }
 
