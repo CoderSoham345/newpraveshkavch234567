@@ -205,14 +205,25 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
     if (ctx) {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      let croppedDataUrl = canvas.toDataURL('image/jpeg', 0.95);
       const qrData: string | null = activeResult?.qrCodeData || null;
+      let croppedDataUrl: string;
 
       if (activeResult?.quad) {
         croppedDataUrl = cropAndStraightenDocument(canvas, activeResult.quad.corners);
+      } else {
+        // Construct tight quad matching central scanner frame box (12% margin from edges)
+        const marginX = canvas.width * 0.12;
+        const marginY = canvas.height * 0.18;
+        const fallbackCorners: QuadCorners = {
+          topLeft: { x: marginX, y: marginY },
+          topRight: { x: canvas.width - marginX, y: marginY },
+          bottomRight: { x: canvas.width - marginX, y: canvas.height - marginY },
+          bottomLeft: { x: marginX, y: canvas.height - marginY },
+        };
+        croppedDataUrl = cropAndStraightenDocument(canvas, fallbackCorners);
       }
 
-      logCamera('Frame captured successfully');
+      logCamera('Frame captured successfully (tight card crop applied)');
       setCapturedImage(croppedDataUrl);
       setCapturedQrData(qrData);
       setCameraState('CAPTURED');

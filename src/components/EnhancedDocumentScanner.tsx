@@ -44,44 +44,23 @@ export function EnhancedDocumentScanner({ onDocumentScanned, documentType = 'AUT
     { value: 'OTHER_IDENTITY_DOC', label: 'Other Identity Document' },
   ];
 
-  const mockOCRResponse = (selectedType: DocumentType): ScannedDocument => {
+  const emptyOCRResponse = (selectedType: DocumentType): ScannedDocument => {
     const detectedType = selectedType === 'AUTOMATIC_DETECTION' 
       ? 'PAN_CARD'
       : selectedType;
 
     const fields: Record<string, { value: string; confidence: number; status: string }> = {};
     
-    if (detectedType === 'PAN_CARD') {
-      fields.documentNumber = { value: 'ABCPS1234F', confidence: 99, status: 'VERIFIED' };
-      fields.fullName = { value: 'RAHUL SHARMA', confidence: 98, status: 'VERIFIED' };
-      fields.fatherName = { value: 'RAMESH SHARMA', confidence: 95, status: 'VERIFIED' };
-      fields.dob = { value: '15/08/1992', confidence: 98, status: 'VERIFIED' };
-    } else if (detectedType === 'PASSPORT') {
-      fields.documentNumber = { value: 'Z9821034', confidence: 99, status: 'VERIFIED' };
-      fields.fullName = { value: 'RAHUL SHARMA', confidence: 98, status: 'VERIFIED' };
-      fields.nationality = { value: 'INDIAN', confidence: 100, status: 'VERIFIED' };
-      fields.dob = { value: '15/08/1992', confidence: 98, status: 'VERIFIED' };
-      fields.expiryDate = { value: '09/01/2030', confidence: 98, status: 'VERIFIED' };
-    } else if (detectedType === 'DRIVING_LICENCE') {
-      fields.documentNumber = { value: 'DL-0420110012345', confidence: 99, status: 'VERIFIED' };
-      fields.fullName = { value: 'RAHUL SHARMA', confidence: 98, status: 'VERIFIED' };
-      fields.dob = { value: '15/08/1992', confidence: 98, status: 'VERIFIED' };
-      fields.expiryDate = { value: '11/05/2035', confidence: 98, status: 'VERIFIED' };
-    } else if (detectedType === 'VOTER_ID') {
-      fields.documentNumber = { value: 'ABC1234567', confidence: 99, status: 'VERIFIED' };
-      fields.fullName = { value: 'RAHUL SHARMA', confidence: 98, status: 'VERIFIED' };
-      fields.gender = { value: 'Male', confidence: 95, status: 'VERIFIED' };
-    } else {
-      fields.documentNumber = { value: '5482 1111 2222', confidence: 98, status: 'VERIFIED' };
-      fields.fullName = { value: 'RAHUL SHARMA', confidence: 98, status: 'VERIFIED' };
-      fields.dob = { value: '15/08/1992', confidence: 98, status: 'VERIFIED' };
-    }
+    fields.documentNumber = { value: '', confidence: 0, status: 'NOT_DETECTED' };
+    fields.fullName = { value: '', confidence: 0, status: 'NOT_DETECTED' };
+    fields.fatherName = { value: '', confidence: 0, status: 'NOT_DETECTED' };
+    fields.dob = { value: '', confidence: 0, status: 'NOT_DETECTED' };
 
     return {
       type: detectedType,
-      confidence: 95,
+      confidence: 0,
       fields,
-      rawOCRText: `MOCK OCR TEXT STREAM FOR ${detectedType}`,
+      rawOCRText: `Unable to extract fields automatically. Please enter details manually or retry scan.`,
     };
   };
 
@@ -90,16 +69,11 @@ export function EnhancedDocumentScanner({ onDocumentScanned, documentType = 'AUT
     setShowConfidenceWarning(false);
 
     try {
-      // Simulate OCR processing
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 800));
 
-      const result = mockOCRResponse(selectedType);
+      const result = emptyOCRResponse(selectedType);
       setScannedDoc(result);
-
-      // Show warning if confidence is below 85%
-      if (result?.fields && Object.values(result.fields).some((f: any) => f?.confidence < 85)) {
-        setShowConfidenceWarning(true);
-      }
+      setShowConfidenceWarning(true);
 
       onDocumentScanned(result);
     } finally {

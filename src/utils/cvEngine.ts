@@ -858,9 +858,24 @@ export function cropAndStraightenDocument(
   sourceCanvas: HTMLCanvasElement,
   corners: QuadCorners
 ): string {
+  // Compute true aspect ratio from detected corners
+  const topW = Math.hypot(corners.topRight.x - corners.topLeft.x, corners.topRight.y - corners.topLeft.y);
+  const botW = Math.hypot(corners.bottomRight.x - corners.bottomLeft.x, corners.bottomRight.y - corners.bottomLeft.y);
+  const leftH = Math.hypot(corners.bottomLeft.y - corners.topLeft.y, corners.bottomLeft.x - corners.topLeft.x);
+  const rightH = Math.hypot(corners.bottomRight.y - corners.topRight.y, corners.bottomRight.x - corners.topRight.x);
+
+  const avgW = (topW + botW) / 2;
+  const avgH = (leftH + rightH) / 2;
+  let detectedAspect = avgW / (avgH || 1);
+
+  // Keep within reasonable card aspect ratio bounds (e.g. 1.2 to 1.8 for standard cards)
+  if (isNaN(detectedAspect) || detectedAspect < 0.5 || detectedAspect > 2.5) {
+    detectedAspect = 1.58; // Standard ID card ratio fallback
+  }
+
   const outputCanvas = document.createElement('canvas');
-  const targetW = 1000; // High resolution standard document scan width
-  const targetH = 630;  // Standard 1.58 card ratio height
+  const targetW = 1200; // High resolution crop width
+  const targetH = Math.round(targetW / detectedAspect); // Exact height preserving card aspect ratio
   outputCanvas.width = targetW;
   outputCanvas.height = targetH;
 
@@ -912,7 +927,7 @@ export function cropAndStraightenDocument(
   }
 
   if (!transformed) {
-    // Canvas 2D fallback crop
+    // Canvas 2D fallback crop strictly to corners bounding box
     const minX = Math.max(0, Math.min(corners.topLeft.x, corners.bottomLeft.x));
     const minY = Math.max(0, Math.min(corners.topLeft.y, corners.topRight.y));
     const maxX = Math.min(sourceCanvas.width, Math.max(corners.topRight.x, corners.bottomRight.x));
