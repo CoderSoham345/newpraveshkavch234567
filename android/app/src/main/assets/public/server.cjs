@@ -1694,9 +1694,15 @@ RULES & INSTRUCTIONS:
     const detectedType = geminiParsedData?.documentType || detectDocumentType(rawOCRText, side).detectedDocumentType;
     const finalTargetType = docType && docType !== "AUTOMATIC_DETECTION" ? docType : detectedType;
     const ruleBasedResult = extractFieldsFromRawText(rawOCRText, finalTargetType);
+    const extractedFullName = geminiParsedData?.fullName || ruleBasedResult.extractedData.fullName || "";
+    const extractedDocNum = geminiParsedData?.documentNumber || ruleBasedResult.extractedData.documentNumber || "";
+    const lowFields = [...ruleBasedResult.extractedData.lowConfidenceFields || []];
+    if (!extractedFullName && !lowFields.includes("fullName")) lowFields.push("fullName");
+    if (!extractedDocNum && !lowFields.includes("documentNumber")) lowFields.push("documentNumber");
+    const calculatedConfidence = !extractedFullName || !extractedDocNum ? Math.min(ruleBasedResult.overallConfidence || 40, 50) : geminiParsedData?.confidenceScore || ruleBasedResult.overallConfidence || 88;
     const mergedData = {
-      fullName: geminiParsedData?.fullName || ruleBasedResult.extractedData.fullName || "Verified Card Holder",
-      documentNumber: geminiParsedData?.documentNumber || ruleBasedResult.extractedData.documentNumber || "",
+      fullName: extractedFullName,
+      documentNumber: extractedDocNum,
       documentType: finalTargetType,
       dob: normalizeDate(geminiParsedData?.dob || ruleBasedResult.extractedData.dob).formattedDate,
       gender: geminiParsedData?.gender || ruleBasedResult.extractedData.gender || "",
@@ -1706,7 +1712,7 @@ RULES & INSTRUCTIONS:
       issueDate: normalizeDate(geminiParsedData?.issueDate || ruleBasedResult.extractedData.issueDate).formattedDate,
       expiryDate: normalizeDate(geminiParsedData?.expiryDate || ruleBasedResult.extractedData.expiryDate).formattedDate,
       nationality: geminiParsedData?.nationality || ruleBasedResult.extractedData.nationality || "INDIAN",
-      panType: geminiParsedData?.panType || (geminiParsedData?.documentNumber ? determinePANType(geminiParsedData.documentNumber).panType : ruleBasedResult.extractedData.panType) || "Individual",
+      panType: geminiParsedData?.panType || (extractedDocNum ? determinePANType(extractedDocNum).panType : ruleBasedResult.extractedData.panType) || "Individual",
       isMaskedAadhaar: geminiParsedData?.isMaskedAadhaar ?? ruleBasedResult.extractedData.isMaskedAadhaar ?? false,
       maskedDocumentNumber: geminiParsedData?.maskedDocumentNumber || ruleBasedResult.extractedData.maskedDocumentNumber || "",
       epicNumber: geminiParsedData?.epicNumber || ruleBasedResult.extractedData.epicNumber || "",
@@ -1714,8 +1720,8 @@ RULES & INSTRUCTIONS:
       bloodGroup: geminiParsedData?.bloodGroup || ruleBasedResult.extractedData.bloodGroup || "",
       vehicleCategories: geminiParsedData?.vehicleCategories || ruleBasedResult.extractedData.vehicleCategories || "",
       mrzCode: geminiParsedData?.mrzCode || ruleBasedResult.extractedData.mrzCode || "",
-      confidenceScore: geminiParsedData?.confidenceScore || ruleBasedResult.overallConfidence || 95,
-      lowConfidenceFields: ruleBasedResult.extractedData.lowConfidenceFields || []
+      confidenceScore: calculatedConfidence,
+      lowConfidenceFields: lowFields
     };
     const totalTime = Date.now() - startTime;
     console.log("[v0] ===== DEVELOPER OCR ENGINE LOGS =====");
