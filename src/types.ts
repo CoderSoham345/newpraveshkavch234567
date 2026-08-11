@@ -119,6 +119,7 @@ export interface ExtractedDocData {
   expiryDate?: string;
   nationality?: string;
   documentType: DocumentType;
+  rawText?: string;
   confidenceScore: number; // 0 - 100
   lowConfidenceFields: string[];
   

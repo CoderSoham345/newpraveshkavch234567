@@ -91,11 +91,55 @@ export const Step4ScanBack: React.FC<Step4ScanBackProps> = ({
         </span>
       </div>
 
-      {/* Real-time Automatic Document Edge Detection Canvas */}
-      <DocumentScannerCanvas
-        selectedDocType={docType}
-        onCaptured={handleCanvasCaptured}
-      />
+      {/* Real-time Automatic Document Edge Detection Canvas OR Adobe Scan Editor */}
+      {isEditingInAdobeScan && scannedPages.length > 0 ? (
+        <AdobeScanEditor
+          pages={scannedPages}
+          onUpdatePages={(updated) => setScannedPages(updated)}
+          onAddPage={() => {
+            setIsEditingInAdobeScan(false);
+            setCapturedImage(null);
+          }}
+          onRetakeAll={() => {
+            setIsEditingInAdobeScan(false);
+            setScannedPages([]);
+            setCapturedImage(null);
+          }}
+          onConfirmScans={(finalPages) => {
+            const finalImg = finalPages[0]?.processedImage || capturedImage;
+            if (finalImg) {
+              const addressFromQr = qrScannedData ? qrScannedData : '';
+              onBackCaptureCompleted(finalImg, {
+                address: addressFromQr,
+                pinCode: addressFromQr ? (addressFromQr.match(/\b\d{6}\b/)?.[0] || '') : '',
+              });
+            }
+          }}
+        />
+      ) : (
+        <DocumentScannerCanvas
+          selectedDocType={docType}
+          onCaptured={handleCanvasCaptured}
+          onOpenEditor={(imgUrl) => {
+            const newPage: ScannedPageItem = {
+              id: `page-back-${Date.now()}`,
+              rawImage: imgUrl,
+              processedImage: imgUrl,
+              corners: {
+                topLeft: { x: 50, y: 50 },
+                topRight: { x: 1150, y: 50 },
+                bottomRight: { x: 1150, y: 700 },
+                bottomLeft: { x: 50, y: 700 },
+              },
+              rotation: 0,
+              filter: 'AUTO',
+              docType: docType,
+            };
+            setScannedPages([newPage]);
+            setIsEditingInAdobeScan(true);
+          }}
+        />
+      )}
 
       {/* QR Code Scanned Info Box */}
       {qrScannedData && (

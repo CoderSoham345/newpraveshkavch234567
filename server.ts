@@ -1311,6 +1311,7 @@ CRITICAL OCR & EXTRACTION RULES:
       bloodGroup: geminiParsedData?.bloodGroup || ruleBasedResult.extractedData.bloodGroup || '',
       vehicleCategories: geminiParsedData?.vehicleCategories || ruleBasedResult.extractedData.vehicleCategories || '',
       mrzCode: geminiParsedData?.mrzCode || ruleBasedResult.extractedData.mrzCode || '',
+      rawText: rawOCRText || (geminiParsedData ? `DOCUMENT TYPE: ${finalTargetType}\nNAME: ${extractedFullName}\nDOC NO: ${extractedDocNum}\nDOB: ${geminiParsedData.dob || ''}\nGENDER: ${geminiParsedData.gender || ''}\nFATHER NAME: ${geminiParsedData.fatherName || ''}\nADDRESS: ${geminiParsedData.address || ''}\nPIN CODE: ${geminiParsedData.pinCode || ''}` : ''),
       confidenceScore: calculatedConfidence,
       lowConfidenceFields: lowFields,
     };

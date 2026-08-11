@@ -16,6 +16,8 @@ import {
   RotateCcw,
   Settings,
   ArrowRight,
+  Scissors,
+  Sliders,
   Image as ImageIcon
 } from 'lucide-react';
 import { DocumentType } from '../types';
@@ -41,11 +43,13 @@ import {
 interface DocumentScannerCanvasProps {
   selectedDocType: DocumentType;
   onCaptured: (croppedImageUrl: string, qrCodeData?: string | null) => void;
+  onOpenEditor?: (croppedImageUrl: string) => void;
 }
 
 export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
   selectedDocType,
   onCaptured,
+  onOpenEditor,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -242,9 +246,6 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
         setCameraState('CAPTURED');
         handleStopCamera();
         setIsCapturing(false);
-
-        // AUTO-PROCEED IMMEDIATELY (ZERO MANUAL CROPPING NEEDED)
-        onCaptured(croppedDataUrl, qrData);
       } else {
         // AUTOMATIC DETECTION FAILED - SHOW FAILURE FALLBACK
         logCamera('Document edges could not be detected on high-res capture');
@@ -577,8 +578,8 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
     return (
       <div className="relative w-full rounded-2xl bg-slate-950 border border-emerald-500/40 overflow-hidden shadow-2xl flex flex-col items-center justify-center p-4 sm:p-6 space-y-4 animate-fade-in">
         <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm tracking-wide">
-          <CheckCircle2 className="w-5 h-5" />
-          <span>DOCUMENT CAPTURED</span>
+          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+          <span>DOCUMENT DETECTED ✓ Auto-cropped & Straightened</span>
         </div>
 
         <div className="relative max-w-lg w-full rounded-xl overflow-hidden border-2 border-emerald-500/50 shadow-2xl bg-slate-900">
@@ -595,16 +596,28 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
           )}
         </div>
 
-        <div className="flex items-center gap-3 w-full max-w-md pt-2">
+        <div className="flex flex-wrap items-center justify-center gap-2.5 w-full max-w-md pt-2">
           <button
             type="button"
             onClick={handleRetake}
-            className="flex-1 py-3 px-4 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
+            className="flex-1 py-3 px-3 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
             id="btn-retake-captured-doc"
           >
             <RotateCcw className="w-4 h-4 text-amber-400" />
             <span>RETAKE</span>
           </button>
+
+          {onOpenEditor && (
+            <button
+              type="button"
+              onClick={() => onOpenEditor(capturedImage)}
+              className="flex-1 py-3 px-3 rounded-xl text-xs font-bold bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/50 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+              id="btn-edit-captured-doc"
+            >
+              <Scissors className="w-4 h-4 text-cyan-400" />
+              <span>MANUAL CROP / EDIT</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -612,7 +625,7 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
             className="flex-1 py-3 px-4 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 shadow-lg border border-emerald-400/40 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
             id="btn-continue-captured-doc"
           >
-            <span>CONTINUE</span>
+            <span>CONTINUE TO OCR</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
