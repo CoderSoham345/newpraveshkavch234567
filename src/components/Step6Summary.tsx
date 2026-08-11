@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   CheckCircle2, 
   Send, 
@@ -15,7 +15,9 @@ import {
   Sparkles,
   ArrowRight,
   Lock,
-  ShieldCheck
+  ShieldCheck,
+  AlertTriangle,
+  AlertCircle
 } from 'lucide-react';
 import { ExtractedDocData, Resident, FaceVerificationData } from '../types';
 import { maskDocumentNumber, maskName } from '../utils/privacyUtils';
@@ -44,6 +46,7 @@ interface Step6SummaryProps {
   onSendRequest: () => void;
   onBackToFace: () => void;
   isSaving?: boolean;
+  registrationError?: string | null;
 }
 
 export const Step6Summary: React.FC<Step6SummaryProps> = ({
@@ -70,8 +73,11 @@ export const Step6Summary: React.FC<Step6SummaryProps> = ({
   onSendRequest,
   onBackToFace,
   isSaving = false,
+  registrationError = null,
 }) => {
   const [residentSearchTerm, setResidentSearchTerm] = useState<string>('');
+  const [localResidentError, setLocalResidentError] = useState<string | null>(null);
+  const residentSectionRef = useRef<HTMLDivElement>(null);
 
   const filteredResidents = residents.filter(
     (r) =>
@@ -80,7 +86,7 @@ export const Step6Summary: React.FC<Step6SummaryProps> = ({
       r.building.toLowerCase().includes(residentSearchTerm.toLowerCase())
   );
 
-  const currentResident = residents.find((r) => r.id === selectedResidentId) || residents[0];
+  const currentResident = residents.find((r) => r.id === selectedResidentId);
 
   const purposesList = [
     'Personal Visit',
@@ -90,6 +96,23 @@ export const Step6Summary: React.FC<Step6SummaryProps> = ({
     'Guest / Overnight Stay',
     'Cab / Taxi Pick & Drop',
   ];
+
+  const handleSelectResident = (id: string) => {
+    setSelectedResidentId(id);
+    setLocalResidentError(null);
+  };
+
+  const handleCompleteButtonClick = () => {
+    if (!selectedResidentId) {
+      setLocalResidentError('Please select a Target Resident / Apartment Unit before completing registration.');
+      if (residentSectionRef.current) {
+        residentSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+    setLocalResidentError(null);
+    onSendRequest();
+  };
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
@@ -256,10 +279,38 @@ export const Step6Summary: React.FC<Step6SummaryProps> = ({
             </h3>
 
             {/* Resident Host Selector */}
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                Target Resident / Apartment Unit
-              </label>
+            <div 
+              ref={residentSectionRef}
+              className={`p-3.5 rounded-xl border transition-all ${
+                localResidentError || (!selectedResidentId && registrationError)
+                  ? 'border-2 border-rose-500/90 bg-rose-950/30'
+                  : selectedResidentId
+                  ? 'border-emerald-500/40 bg-slate-950/60'
+                  : 'border-amber-500/50 bg-amber-950/10'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[11px] font-extrabold text-slate-300 uppercase tracking-wider">
+                  Target Resident / Apartment Unit <span className="text-rose-400">*</span>
+                </label>
+                {selectedResidentId ? (
+                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">
+                    HOST SELECTED ✓
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-500/30 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3 text-amber-400" />
+                    SELECTION REQUIRED
+                  </span>
+                )}
+              </div>
+
+              {localResidentError && (
+                <div className="mb-2 p-2 rounded-lg bg-rose-900/80 border border-rose-500 text-rose-200 text-[11px] font-bold flex items-center gap-2 animate-shake">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{localResidentError}</span>
+                </div>
+              )}
 
               {/* Resident Search Input */}
               <div className="relative mb-2">
@@ -277,9 +328,10 @@ export const Step6Summary: React.FC<Step6SummaryProps> = ({
               <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
                 {filteredResidents.map((r) => (
                   <button
+                    type="button"
                     key={r.id}
-                    onClick={() => setSelectedResidentId(r.id)}
-                    className={`w-full p-2.5 rounded-xl text-left border flex items-center justify-between transition-all ${
+                    onClick={() => handleSelectResident(r.id)}
+                    className={`w-full p-2.5 rounded-xl text-left border flex items-center justify-between transition-all cursor-pointer ${
                       selectedResidentId === r.id
                         ? 'bg-cyan-500/10 border-cyan-400 text-white shadow-md shadow-cyan-500/10'
                         : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
@@ -338,17 +390,35 @@ export const Step6Summary: React.FC<Step6SummaryProps> = ({
           </div>
 
           {/* Submit Action */}
-          <div className="pt-3">
+          <div className="pt-3 space-y-2">
+            {/* Server / Validation Error Banner */}
+            {registrationError && (
+              <div className="p-3.5 rounded-xl bg-rose-950/90 border-2 border-rose-500/90 text-rose-200 text-xs space-y-1 animate-fade-in shadow-xl">
+                <div className="flex items-center gap-2 font-black text-rose-300 uppercase tracking-wide">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>REGISTRATION BLOCKED</span>
+                </div>
+                <p className="text-[11px] text-rose-100 leading-relaxed font-semibold">
+                  {registrationError}
+                </p>
+              </div>
+            )}
+
             <button
-              onClick={onSendRequest}
+              type="button"
+              onClick={handleCompleteButtonClick}
               disabled={isSaving}
-              className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-600 hover:from-emerald-400 hover:to-cyan-500 text-slate-950 font-black text-sm shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2.5 transition-transform hover:scale-[1.01] disabled:opacity-50"
+              className={`w-full py-4 rounded-xl font-black text-sm shadow-xl flex items-center justify-center gap-2.5 transition-all ${
+                isSaving
+                  ? 'bg-slate-800 text-slate-400 border border-slate-700 cursor-wait'
+                  : 'bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-600 hover:from-emerald-400 hover:to-cyan-500 text-slate-950 shadow-emerald-500/20 hover:scale-[1.01] cursor-pointer'
+              }`}
               id="btn-complete-registration-save"
             >
               <CheckCircle2 className="w-5 h-5 text-slate-950" />
               <span>{isSaving ? 'SAVING DOCUMENTS & REGISTERING...' : 'COMPLETE REGISTRATION & SAVE DOCUMENTS'}</span>
             </button>
-            <p className="text-[10px] text-slate-400 text-center mt-2">
+            <p className="text-[10px] text-slate-400 text-center mt-1">
               All scanned images, OCR metadata, biometric face photo & visitor details will be permanently saved.
             </p>
           </div>

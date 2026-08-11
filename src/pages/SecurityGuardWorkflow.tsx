@@ -36,6 +36,7 @@ import {
   UploadProgressStatus, 
   SaveVisitorPayload 
 } from '../utils/documentStorage';
+import { validateFinalRegistration } from '../utils/registrationValidator';
 import { AlertTriangle, CheckCircle2, CloudUpload, RefreshCw, X, HardDrive } from 'lucide-react';
 
 export function SecurityGuardWorkflow() {
@@ -135,11 +136,12 @@ export function SecurityGuardWorkflow() {
   });
 
   const [selectedResidentId, setSelectedResidentId] = useState<string>('');
-  const [visitPurpose, setVisitPurpose] = useState<string>('');
+  const [visitPurpose, setVisitPurpose] = useState<string>('Personal Visit');
   const [vehicleNumber, setVehicleNumber] = useState<string>('');
   const [numAccompanying, setNumAccompanying] = useState<number>(1);
   const [visitorPhone, setVisitorPhone] = useState<string>('');
   const [currentVisitorRecord, setCurrentVisitorRecord] = useState<VisitorRecord | null>(null);
+  const [registrationError, setRegistrationError] = useState<string | null>(null);
 
   // Fetch data on mount
   useEffect(() => {
@@ -342,44 +344,78 @@ export function SecurityGuardWorkflow() {
   };
 
   const handleSendRequest = async () => {
-    const resident = residents.find((r) => r.id === selectedResidentId) || residents[0];
+    console.log('[REGISTRATION] Initiating registration submission check...');
+    setRegistrationError(null);
 
-    const payload: SaveVisitorPayload = {
-      visitorName: extractedData.fullName,
-      phone: visitorPhone,
-      email: visitorEmail || `${extractedData.fullName.toLowerCase().replace(/\s+/g, '')}@gmail.com`,
-      company: visitorCompany || extractedData.companyName || 'Self / Private',
-      documentType: selectedDocType,
-      documentNumber: extractedData.documentNumber,
-      frontDocUrl: frontDocImage,
-      backDocUrl: backDocImage,
-      liveFaceUrl: liveFaceImage,
-      extractedData,
-      faceMetrics,
-      residentId: resident.id,
-      residentName: resident.name,
-      buildingUnit: `${resident.building} (${resident.flatNumber})`,
-      purpose: visitPurpose,
-      vehicleNumber,
-      numAccompanying,
-      guardName: user?.name || 'Security Officer',
-      guardId: user?.id || 'guard-01',
-      gateName: user?.gate || 'Main Gate 01',
-      verificationStatus: 'VERIFIED',
-    };
-
-    // Check duplicate visitor within 24 hours
-    const dupCheck = checkDuplicateRegistration(visitors, payload.documentNumber, payload.phone, 24);
-    if (dupCheck.isDuplicate && dupCheck.existingVisitor) {
-      setDuplicateModal({
-        show: true,
-        existingVisitor: dupCheck.existingVisitor,
-        payload,
+    try {
+      // Hard Registration Gate Validation
+      const validation = validateFinalRegistration({
+        frontDocImage,
+        backDocImage,
+        liveFaceImage,
+        extractedData,
+        faceMetrics,
+        selectedResidentId,
+        residents,
+        visitorPhone,
+        purpose: visitPurpose,
       });
-      return;
-    }
 
-    await executeSaveRegistration(payload);
+      console.log('[REGISTRATION] Gate validation result:', validation);
+
+      if (!validation.valid) {
+        const primaryError = validation.errors[0] || 'Registration blocked due to missing or invalid information.';
+        console.warn('[REGISTRATION] Submission BLOCKED:', validation.errors);
+        setRegistrationError(primaryError);
+        setToastMessage(`⚠️ ${primaryError}`);
+        return;
+      }
+
+      const resident = validation.targetResident!;
+
+      const payload: SaveVisitorPayload = {
+        visitorName: extractedData.fullName,
+        phone: visitorPhone,
+        email: visitorEmail || `${extractedData.fullName.toLowerCase().replace(/\s+/g, '')}@gmail.com`,
+        company: visitorCompany || extractedData.companyName || 'Self / Private',
+        documentType: selectedDocType,
+        documentNumber: extractedData.documentNumber,
+        frontDocUrl: frontDocImage,
+        backDocUrl: backDocImage,
+        liveFaceUrl: liveFaceImage,
+        extractedData,
+        faceMetrics,
+        residentId: resident.id,
+        residentName: resident.name,
+        buildingUnit: `${resident.building} (${resident.flatNumber})`,
+        purpose: visitPurpose || 'Personal Visit',
+        vehicleNumber,
+        numAccompanying,
+        guardName: user?.name || 'Security Officer',
+        guardId: user?.id || 'guard-01',
+        gateName: user?.gate || 'Main Gate 01',
+        verificationStatus: 'VERIFIED',
+      };
+
+      // Check duplicate visitor within 24 hours
+      const dupCheck = checkDuplicateRegistration(visitors, payload.documentNumber, payload.phone, 24);
+      if (dupCheck.isDuplicate && dupCheck.existingVisitor) {
+        console.log('[REGISTRATION] Duplicate visitor detected within 24h:', dupCheck.existingVisitor.passNumber);
+        setDuplicateModal({
+          show: true,
+          existingVisitor: dupCheck.existingVisitor,
+          payload,
+        });
+        return;
+      }
+
+      await executeSaveRegistration(payload);
+    } catch (err: any) {
+      console.error('[REGISTRATION] Fatal error during handleSendRequest:', err);
+      const errMsg = err?.message || 'An unexpected error occurred during visitor registration.';
+      setRegistrationError(errMsg);
+      setToastMessage(`❌ Registration Error: ${errMsg}`);
+    }
   };
 
   const handleApproveStatus = async () => {
@@ -587,6 +623,7 @@ export function SecurityGuardWorkflow() {
                   onSendRequest={handleSendRequest}
                   onBackToFace={() => setCurrentStep(5)}
                   isSaving={isSaving}
+                  registrationError={registrationError}
                 />
               )}
               {currentStep === 7 && currentVisitorRecord && (
