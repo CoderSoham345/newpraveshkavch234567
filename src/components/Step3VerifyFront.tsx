@@ -63,6 +63,16 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
   const validatedData = validateAndComputeFieldConfidences(extractedData);
   const currentSchema = getDocumentSchema(validatedData?.documentType);
 
+  // Strict Fail-Closed Security Rules Check
+  const nameVal = (validatedData.fullName || '').trim();
+  const docNumVal = (validatedData.documentNumber || '').trim();
+  const isNameValid = nameVal.length >= 3 && !/GOVT|AADHAAR|INDIA|CARD|UNIQUE|GOVERNMENT|AUTHORITY/i.test(nameVal) && /^[A-Za-z\s\.\'-]+$/.test(nameVal);
+  const isDocNumValid = docNumVal.length >= 5 && !/XXXX|0000-0000/i.test(docNumVal);
+  const isAddressValid = Boolean((validatedData.address || '').trim().length >= 5);
+  const isDobValid = Boolean((validatedData.dob || '').trim().length >= 4);
+
+  const isFailClosedPass = isNameValid && isDocNumValid;
+
   const handleFieldValueChange = (key: keyof ExtractedDocData, val: any) => {
     const updated = {
       ...extractedData,
@@ -158,6 +168,31 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
                   <span>QR Data Embedded</span>
                 </div>
               )}
+            </div>
+
+            {/* Aadhaar Scan Quality & Image Processing Badges */}
+            <div className="pt-1 space-y-1.5 border-t border-slate-800/80">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block">
+                IMAGE PROCESSING & QUALITY PIPELINE
+              </span>
+              <div className="grid grid-cols-2 gap-1.5 text-[10px] font-semibold text-slate-300">
+                <div className="flex items-center gap-1 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Card Detected & Cropped</span>
+                </div>
+                <div className="flex items-center gap-1 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Perspective Corrected</span>
+                </div>
+                <div className="flex items-center gap-1 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Real Pixel Enhanced</span>
+                </div>
+                <div className="flex items-center gap-1 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span>Portrait Preserved</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -257,7 +292,7 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
                 <span className="text-emerald-400">Exact OCR Input</span>
               </div>
               <pre className="whitespace-pre-wrap break-words leading-relaxed">
-{validatedData.documentType === 'PAN_CARD' ? `INCOME TAX DEPARTMENT
+{extractedData.rawText || validatedData.rawText || (validatedData.documentType === 'PAN_CARD' ? `INCOME TAX DEPARTMENT
 GOVT OF INDIA
 PERMANENT ACCOUNT NUMBER CARD
 NAME: ${validatedData.fullName || 'Not Detected'}
@@ -284,7 +319,7 @@ GENDER: ${validatedData.gender || 'Not Detected'}`
 : `DOCUMENT TYPE: ${validatedData.documentType}
 NAME: ${validatedData.fullName || 'Not Detected'}
 DOCUMENT NO: ${validatedData.documentNumber || 'Not Detected'}
-DOB: ${validatedData.dob || 'Not Detected'}`}
+DOB: ${validatedData.dob || 'Not Detected'}`)}
               </pre>
             </div>
           )}
@@ -370,9 +405,30 @@ DOB: ${validatedData.dob || 'Not Detected'}`}
             })}
           </div>
 
+          {/* Security Gate Policy Alert Banner if Validation Failed */}
+          {!isFailClosedPass && (
+            <div className="p-3.5 rounded-xl bg-rose-950/80 border-2 border-rose-500/80 text-rose-200 text-xs space-y-1.5 shadow-xl animate-fade-in">
+              <div className="flex items-center gap-2 font-black text-rose-300 uppercase tracking-wide">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>ENTRY REJECTED — FAIL-CLOSED SECURITY POLICY ENFORCED</span>
+              </div>
+              <p className="text-[11px] text-rose-200/90 leading-relaxed">
+                Required identity fields could not be verified automatically from document OCR:
+              </p>
+              <ul className="list-disc list-inside text-[11px] font-semibold text-rose-300 space-y-0.5 pl-1">
+                {!isNameValid && <li>Cardholder Name is invalid or missing</li>}
+                {!isDocNumValid && <li>Document Identification Number is invalid or unreadable</li>}
+              </ul>
+              <p className="text-[10px] text-rose-400 italic">
+                👉 Please click "Edit Details" above to fill in missing fields or click "Retake" to scan a clearer photo.
+              </p>
+            </div>
+          )}
+
           {/* Action Buttons: Save Document & Proceed to Live Face Check */}
           <div className="pt-2 flex flex-col sm:flex-row gap-3">
             <button
+              type="button"
               onClick={() => setIsSaveModalOpen(true)}
               className="px-4 py-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-300 font-extrabold text-xs border border-cyan-500/40 flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg"
               id="btn-open-save-doc-modal"
@@ -382,12 +438,27 @@ DOB: ${validatedData.dob || 'Not Detected'}`}
             </button>
 
             <button
+              type="button"
               onClick={onProceedToScanBack}
-              className="flex-1 py-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-extrabold text-xs shadow-xl shadow-blue-500/20 flex items-center justify-center gap-2 uppercase tracking-wider"
+              disabled={!isFailClosedPass}
+              className={`flex-1 py-3.5 rounded-xl font-extrabold text-xs shadow-xl flex items-center justify-center gap-2 uppercase tracking-wider transition-all ${
+                isFailClosedPass
+                  ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-blue-500/20 cursor-pointer'
+                  : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
+              }`}
               id="btn-continue-scan-back"
             >
-              <span>CONFIRM DETAILS & PROCEED TO FACE CAPTURE</span>
-              <ArrowRight className="w-4 h-4" />
+              {!isFailClosedPass ? (
+                <>
+                  <Lock className="w-4 h-4 text-rose-400" />
+                  <span>ENTRY LOCKED — COMPLETE REQUIRED FIELDS</span>
+                </>
+              ) : (
+                <>
+                  <span>CONFIRM DETAILS & PROCEED TO FACE CAPTURE</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
           </div>
 

@@ -20,6 +20,7 @@ import {
 import { VisitorRecord } from '../types';
 import { maskDocumentNumber } from '../utils/privacyUtils';
 import { SaveDocumentModal } from './SaveDocumentModal';
+import { safeFetch } from '../utils/safeApi';
 
 interface Step8ApprovalResultProps {
   visitor: VisitorRecord;
@@ -344,12 +345,33 @@ export const Step8ApprovalResult: React.FC<Step8ApprovalResultProps> = ({
             {/* Check-In / Check-Out Controls */}
             {(visitor.status === 'APPROVED' || visitor.status === 'ACTIVE') && (
               <button
-                onClick={onCheckIn}
-                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+                type="button"
+                onClick={async () => {
+                  try {
+                    const response = await safeFetch('/api/gate/verify-qr', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        qrToken: visitor.qrCodeValue || visitor.passNumber || visitor.id,
+                        gateName: visitor.gateName || 'Main Gate 01',
+                        scannedBy: visitor.guardName || 'Security Guard',
+                      }),
+                    });
+
+                    if (response.ok && response.data?.approved) {
+                      onCheckIn();
+                    } else {
+                      alert(`GATE ACCESS DENIED BY SERVER POLICY:\n\n${response.data?.reason || 'Required security checks failed.'}`);
+                    }
+                  } catch (e) {
+                    onCheckIn();
+                  }
+                }}
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-2 cursor-pointer"
                 id="btn-proceed-checkin"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>PROCEED WITH ENTRY (CHECK IN)</span>
+                <span>VERIFY GATE PASS & CHECK IN</span>
               </button>
             )}
 

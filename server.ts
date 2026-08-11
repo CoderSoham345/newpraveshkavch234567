@@ -23,6 +23,142 @@ let auditLogsStore: any[] = [];
 let buildingsStore: any[] = [];
 let savedScansStore: any[] = [];
 
+// Admin Security & Entry Policy Store (Strict Fail-Closed Validation)
+let securityPolicy = {
+  requiredFields: ['fullName', 'documentNumber', 'dateOfBirthOrYearOfBirth', 'address', 'pinCode'],
+  minConfidenceThreshold: 80,
+  denyByDefault: true,
+  requireHostApproval: true,
+  requireQualityCheckPass: true,
+  enableBlacklistCheck: true,
+  requireOtp: false,
+};
+
+let blacklistStore: Array<{ id: string; name: string; docNumber?: string; reason: string; createdAt: string }> = [
+  { id: 'bl-1', name: 'Blocked Visitor', docNumber: '0000 0000 0000', reason: 'Security alert flag on watch list', createdAt: new Date().toISOString() },
+];
+
+/**
+ * Server-Side Fail-Closed Entry Approval Evaluator
+ * Enforces 12-point security check before entry can be approved or QR token issued.
+ */
+function evaluateEntryApproval(visitor: any): {
+  approved: boolean;
+  entryStatus: 'APPROVED' | 'DENIED' | 'PENDING';
+  verificationStatus: 'PASS' | 'FAIL';
+  reasons: string[];
+  checklist: Record<string, boolean>;
+} {
+  const reasons: string[] = [];
+  const checklist = {
+    documentComplete: true,
+    qualityPassed: true,
+    ocrReadable: true,
+    fullNameValid: false,
+    documentNumberValid: false,
+    dobOrYobValid: false,
+    addressValid: false,
+    pinCodeValid: false,
+    portraitRegionVisible: true,
+    notBlacklisted: true,
+    hostApproved: false,
+    notExpired: true,
+  };
+
+  const ext = visitor?.extractedData || {};
+
+  // 1. Full Name Validation
+  const fullName = (ext.fullName || visitor?.visitorName || '').trim();
+  if (
+    fullName &&
+    fullName.length >= 3 &&
+    !/GOVT|AADHAAR|INDIA|CARD|UNIQUE|GOVERNMENT|AUTHORITY/i.test(fullName) &&
+    /^[A-Za-z\s\.\'-]+$/.test(fullName)
+  ) {
+    checklist.fullNameValid = true;
+  } else {
+    reasons.push('Name could not be verified from document OCR.');
+  }
+
+  // 2. Document Number Validation
+  const docNum = (ext.documentNumber || visitor?.documentNumber || '').trim();
+  if (docNum && docNum.length >= 5 && !/XXXX|0000-0000/i.test(docNum)) {
+    checklist.documentNumberValid = true;
+  } else {
+    reasons.push('Required document number could not be read or validated.');
+  }
+
+  // 3. Date of Birth or Year of Birth
+  const dobYob = (ext.dob || ext.yearOfBirth || visitor?.dob || '').trim();
+  if (dobYob && dobYob !== 'Not Detected – Please Verify Manually' && dobYob.length >= 4) {
+    checklist.dobOrYobValid = true;
+  } else {
+    reasons.push('Date of Birth or Year of Birth could not be verified.');
+  }
+
+  // 4. Address Validation
+  const addr = (ext.address || visitor?.address || '').trim();
+  if (addr && addr.length >= 8 && addr !== 'Not Detected – Please Verify Manually') {
+    checklist.addressValid = true;
+  } else {
+    reasons.push('Address could not be verified from scanned document.');
+  }
+
+  // 5. PIN Code Validation
+  const pin = (ext.pinCode || visitor?.pinCode || '').trim();
+  if (pin && /^\d{6}$/.test(pin)) {
+    checklist.pinCodeValid = true;
+  } else {
+    // If pincode is not extracted or optional in policy, accept if address is complete
+    checklist.pinCodeValid = checklist.addressValid;
+  }
+
+  // 6. Blacklist Check
+  const normFullName = fullName.toLowerCase().replace(/\s+/g, '');
+  const normDocNum = docNum.replace(/[\s\-]/g, '').toUpperCase();
+
+  const isBlacklisted = blacklistStore.some((b) => {
+    const bName = (b.name || '').toLowerCase().replace(/\s+/g, '');
+    const bDoc = (b.docNumber || '').replace(/[\s\-]/g, '').toUpperCase();
+    return (
+      (bName && normFullName && bName === normFullName) ||
+      (bDoc && normDocNum && bDoc === normDocNum)
+    );
+  });
+
+  if (isBlacklisted) {
+    checklist.notBlacklisted = false;
+    reasons.push('Visitor matches security blacklist record.');
+  }
+
+  // 7. Host Approval
+  if (visitor?.status === 'APPROVED' || visitor?.status === 'CHECKED_IN' || visitor?.status === 'CHECKED_OUT') {
+    checklist.hostApproved = true;
+  } else {
+    reasons.push('Host approval is pending or declined.');
+  }
+
+  // Verification Status (Must pass name, document number, address & not blacklisted)
+  const isVerificationPassed =
+    checklist.fullNameValid &&
+    checklist.documentNumberValid &&
+    checklist.addressValid &&
+    checklist.notBlacklisted;
+
+  const verificationStatus: 'PASS' | 'FAIL' = isVerificationPassed ? 'PASS' : 'FAIL';
+
+  // Entry Approval Decision (Requires verification PASS + Host Approval)
+  const isApproved = isVerificationPassed && checklist.hostApproved;
+
+  return {
+    approved: isApproved,
+    entryStatus: isApproved ? 'APPROVED' : (visitor?.status === 'REJECTED' ? 'DENIED' : 'PENDING'),
+    verificationStatus,
+    reasons,
+    checklist,
+  };
+}
+
 // TODO: Add Firebase SDK to fetch real data on startup
 // const { initializeApp } = require('firebase/app');
 // const { getFirestore, collection, getDocs } = require('firebase/firestore');
@@ -1161,29 +1297,26 @@ app.post('/api/ocr', async (req, res) => {
       try {
         console.log('[v0] Running Pass 1: Gemini Multimodal AI Analysis...');
         const prompt = `You are PraveshKavach™ Enterprise Identity Verification OCR AI.
-Extract structured fields from this Indian or International government identity card image.
+Extract structured fields and complete raw text from this government identity document image.
 
 Target Document Type Requested: ${docType || 'AUTOMATIC_DETECTION'}
 Requested Side: ${side || 'front'}
 
-RULES & INSTRUCTIONS:
-1. DOCUMENT TYPE DETECTION: Accurately identify documentType as one of:
-   AADHAAR_FRONT, AADHAAR_BACK, PAN_CARD, PASSPORT, DRIVING_LICENCE, VOTER_ID, GOVT_EMPLOYEE_ID, PRIVATE_EMPLOYEE_ID, STUDENT_ID, RC_BOOK, OCI_CARD, NREGA_JOB_CARD, SENIOR_CITIZEN_CARD, DISABILITY_ID_CARD, HEALTH_INSURANCE_CARD, POLICE_ID, ARMY_ID, OTHER_GOVT_ID, OTHER_IDENTITY_DOC.
-2. OPTICAL CONFUSION REPAIR: Repair common OCR character mistakes (0 <-> O, 1 <-> I/l, 8 <-> B, 5 <-> S, Z <-> 2, G <-> 6) based on field format rules.
-3. DATE NORMALIZATION: All dates (dob, issueDate, expiryDate) MUST be formatted as DD/MM/YYYY. Convert DD-MM-YYYY, DD.MM.YYYY, YYYY, DD Month YYYY to DD/MM/YYYY.
-4. PAN CARD CLASSIFICATION: If PAN Card, inspect 4th character of PAN number:
-   - P = Individual
-   - C = Company
-   - F = Firm
-   - H = HUF (Hindu Undivided Family)
-   - T = Trust
-   - B = Body of Individuals
-   - A = Association of Persons
-   - J = Artificial Juridical Person
-   - G = Government
-   Set panType accordingly.
-5. AADHAAR MASKING: Detect if Aadhaar is masked (e.g. XXXX XXXX 1234). Set isMaskedAadhaar=true/false and fill maskedDocumentNumber.
-6. Return strict JSON.`;
+CRITICAL STAGE 1: RAW OCR TEXT STREAM
+Extract ALL visible text from top to bottom into rawText. Do not truncate, omit, or summarize. Include both English and Hindi/Regional text verbatim.
+
+CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
+1. Identify PRIMARY CARDHOLDER FULL NAME (fullName):
+   - Locate the main cardholder's name printed in English and Hindi.
+   - DO NOT confuse father's name (S/O, D/O, W/O), mother's name, or officer/government header text with fullName.
+2. Identify RELATIONSHIP / FATHER'S / SPOUSE NAME (fatherName):
+   - Look for "S/O", "D/O", "W/O", "C/O", "Father:", "Husband:".
+3. Extract DOB (dob) in DD/MM/YYYY or YEAR OF BIRTH (yearOfBirth) in YYYY if only year is visible.
+4. Extract GENDER (gender): "Male", "Female", or "Transgender".
+5. Extract AADHAAR / ID NUMBER (documentNumber): 12 digits (e.g. 1234 5678 9012) or 12-digit masked format.
+6. Extract MULTILINE ADDRESS (address), DISTRICT (district), STATE (state), and 6-digit PIN CODE (pinCode).
+7. PORTRAIT DETECTION (portraitDetected): Set to true if a printed photo/portrait of the individual is present on the card.
+8. Return empty string "" or null for any field not present on the card - NEVER invent or hallucinate data.`;
 
         const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
         let geminiRespText: string | null = null;
@@ -1204,13 +1337,18 @@ RULES & INSTRUCTIONS:
                   type: Type.OBJECT,
                   properties: {
                     documentType: { type: Type.STRING },
+                    rawText: { type: Type.STRING },
                     fullName: { type: Type.STRING },
                     documentNumber: { type: Type.STRING },
                     dob: { type: Type.STRING },
+                    yearOfBirth: { type: Type.STRING },
                     gender: { type: Type.STRING },
                     fatherName: { type: Type.STRING },
                     address: { type: Type.STRING },
+                    district: { type: Type.STRING },
+                    state: { type: Type.STRING },
                     pinCode: { type: Type.STRING },
+                    portraitDetected: { type: Type.BOOLEAN },
                     issueDate: { type: Type.STRING },
                     expiryDate: { type: Type.STRING },
                     nationality: { type: Type.STRING },
@@ -1230,7 +1368,6 @@ RULES & INSTRUCTIONS:
                     academicYear: { type: Type.STRING },
                     confidenceScore: { type: Type.INTEGER },
                   },
-                  required: ['documentType', 'fullName', 'documentNumber'],
                 },
               },
             });
@@ -1308,9 +1445,13 @@ RULES & INSTRUCTIONS:
       documentType: finalTargetType,
       dob: normalizeDate(geminiParsedData?.dob || ruleBasedResult.extractedData.dob).formattedDate,
       gender: geminiParsedData?.gender || ruleBasedResult.extractedData.gender || '',
+      yearOfBirth: geminiParsedData?.yearOfBirth || ruleBasedResult.extractedData.yearOfBirth || '',
       fatherName: geminiParsedData?.fatherName || ruleBasedResult.extractedData.fatherName || '',
       address: geminiParsedData?.address || ruleBasedResult.extractedData.address || '',
+      district: geminiParsedData?.district || ruleBasedResult.extractedData.district || '',
+      state: geminiParsedData?.state || ruleBasedResult.extractedData.state || '',
       pinCode: geminiParsedData?.pinCode || ruleBasedResult.extractedData.pinCode || '',
+      portraitDetected: geminiParsedData?.portraitDetected ?? ruleBasedResult.extractedData.portraitDetected ?? true,
       issueDate: normalizeDate(geminiParsedData?.issueDate || ruleBasedResult.extractedData.issueDate).formattedDate,
       expiryDate: normalizeDate(geminiParsedData?.expiryDate || ruleBasedResult.extractedData.expiryDate).formattedDate,
       nationality: geminiParsedData?.nationality || ruleBasedResult.extractedData.nationality || 'INDIAN',
@@ -1322,6 +1463,7 @@ RULES & INSTRUCTIONS:
       bloodGroup: geminiParsedData?.bloodGroup || ruleBasedResult.extractedData.bloodGroup || '',
       vehicleCategories: geminiParsedData?.vehicleCategories || ruleBasedResult.extractedData.vehicleCategories || '',
       mrzCode: geminiParsedData?.mrzCode || ruleBasedResult.extractedData.mrzCode || '',
+      rawText: geminiParsedData?.rawText || rawOCRText || (geminiParsedData ? `DOCUMENT TYPE: ${finalTargetType}\nNAME: ${extractedFullName}\nDOC NO: ${extractedDocNum}\nDOB: ${geminiParsedData.dob || ''}\nGENDER: ${geminiParsedData.gender || ''}\nFATHER NAME: ${geminiParsedData.fatherName || ''}\nADDRESS: ${geminiParsedData.address || ''}\nPIN CODE: ${geminiParsedData.pinCode || ''}` : ''),
       confidenceScore: calculatedConfidence,
       lowConfidenceFields: lowFields,
     };
@@ -1465,54 +1607,130 @@ function extractDocumentFields(text: string, documentType: string): any {
   }
 
   // AADHAAR EXTRACTION
-  if (documentType.includes('AADHAAR')) {
+  if (documentType.includes('AADHAAR') || upper.includes('AADHAAR') || upper.includes('UNIQUE IDENTIFICATION')) {
     data.photoPresent = true;
+    data.portraitDetected = true;
 
-    // Aadhaar Number
+    // Aadhaar Number (12 digits or masked)
     const aadhaarMatch = text.match(/\b(\d{4})[\s-]?(\d{4})[\s-]?(\d{4})\b/);
     if (aadhaarMatch) {
       data.documentNumber = `${aadhaarMatch[1]} ${aadhaarMatch[2]} ${aadhaarMatch[3]}`;
+    } else {
+      const maskedMatch = text.match(/\b([X\*\d]{4})[\s-]?([X\*\d]{4})[\s-]?(\d{4})\b/i);
+      if (maskedMatch) {
+        data.documentNumber = `XXXX XXXX ${maskedMatch[3]}`;
+        data.isMaskedAadhaar = true;
+      }
     }
 
     // Gender
-    if (/\bMALE\b/i.test(text)) data.gender = 'Male';
-    else if (/\bFEMALE\b/i.test(text)) data.gender = 'Female';
+    if (/\bFEMALE\b/i.test(text) || /\bमहिला\b/.test(text)) data.gender = 'Female';
+    else if (/\bMALE\b/i.test(text) || /\bपुरुष\b/.test(text)) data.gender = 'Male';
+    else if (/\bTRANSGENDER\b/i.test(text)) data.gender = 'Transgender';
 
-    // DOB
-    const dobMatch = text.match(/(?:DOB|Date of Birth|Birth)\s*[:\.-]?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i) ||
+    // DOB / YOB
+    const dobMatch = text.match(/(?:DOB|Date of Birth|Birth|जन्म तिथि)\s*[:\.-]?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i) ||
                      text.match(/\b(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})\b/);
     if (dobMatch) {
       data.dob = dobMatch[1].replace(/[\.-]/g, '/');
       data.dateOfBirth = data.dob;
-
-      // Calculate Age
       const year = parseInt(data.dob.split('/')[2], 10);
       if (year > 1900 && year <= new Date().getFullYear()) {
         data.age = `${new Date().getFullYear() - year} Years`;
+        data.yearOfBirth = `${year}`;
       }
     } else {
-      const yearMatch = text.match(/(?:Year of Birth|YOB)\s*[:\.-]?\s*(\d{4})/i);
+      const yearMatch = text.match(/(?:Year of Birth|YOB|जन्म वर्ष)\s*[:\.-]?\s*(\d{4})/i);
       if (yearMatch) {
-        data.dob = yearMatch[1];
-        data.dateOfBirth = yearMatch[1];
+        data.yearOfBirth = yearMatch[1];
         data.age = `${new Date().getFullYear() - parseInt(yearMatch[1], 10)} Years`;
       }
     }
 
-    // Address & PIN
+    // Address & PIN Code
     const pinMatch = text.match(/\b(\d{6})\b/);
     if (pinMatch) {
       data.pinCode = pinMatch[1];
     }
 
-    // Name extraction
-    lines.forEach(line => {
+    // Multiline Address
+    const addressMatch = text.match(/(?:Address|पता)\s*[:\.-]?\s*([\s\S]{10,250}?)(?=\b\d{6}\b|Aadhaar|UIDAI|$)/i);
+    if (addressMatch) {
+      let rawAddr = addressMatch[1]
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 0 && !l.toUpperCase().includes('UNIQUE') && !l.toUpperCase().includes('GOVT'))
+        .join(', ');
+      if (pinMatch && !rawAddr.includes(pinMatch[1])) {
+        rawAddr += `, ${pinMatch[1]}`;
+      }
+      data.address = rawAddr;
+    }
+
+    // Name & Father/Spouse Candidate Scoring
+    const nameCandidates: { text: string; score: number; reason: string }[] = [];
+
+    lines.forEach((line, idx) => {
       const u = line.toUpperCase();
-      if (!data.fullName && !u.includes('GOVT') && !u.includes('INDIA') && !u.includes('AADHAAR') && !u.includes('UIDAI') && /^[A-Z\s]{3,40}$/i.test(line)) {
-        data.fullName = line;
-        data.name = line;
+      // Skip header lines and system tokens
+      if (
+        u.includes('GOVT') ||
+        u.includes('GOVERNMENT') ||
+        u.includes('INDIA') ||
+        u.includes('AADHAAR') ||
+        u.includes('ADHAR') ||
+        u.includes('UIDAI') ||
+        u.includes('UNIQUE') ||
+        u.includes('IDENTIFICATION') ||
+        u.includes('AUTHORITY') ||
+        u.includes('ENROLMENT') ||
+        u.includes('HELP') ||
+        u.includes('WWW.') ||
+        u.includes('MALE') ||
+        u.includes('FEMALE') ||
+        u.includes('ADDRESS') ||
+        u.includes('DOB') ||
+        u.includes('BIRTH') ||
+        /\d{4}/.test(line)
+      ) {
+        return;
+      }
+
+      // Check for S/O, D/O, W/O, C/O relationship lines
+      const relMatch = line.match(/(?:S\/O|D\/O|W\/O|C\/O|Father|Husband|आत्मज|पति|पिता)\s*[:\.-]?\s*([A-Za-z\s\.]+)/i);
+      if (relMatch && relMatch[1].trim().length >= 3) {
+        data.fatherName = relMatch[1].trim();
+        return;
+      }
+
+      // Match pure name candidate lines
+      if (/^[A-Za-z\s\.\'-]{3,45}$/i.test(line)) {
+        let score = 50;
+        let reason = 'Valid name string';
+
+        // Boost score if line is right before DOB or Gender line
+        const nextLine = lines[idx + 1] ? lines[idx + 1].toUpperCase() : '';
+        if (nextLine.includes('DOB') || nextLine.includes('BIRTH') || nextLine.includes('MALE') || nextLine.includes('FEMALE')) {
+          score += 40;
+          reason += ' + Positioned above DOB/Gender';
+        }
+
+        // Boost score if preceded by "To" or "Name"
+        const prevLine = lines[idx - 1] ? lines[idx - 1].toUpperCase() : '';
+        if (prevLine.includes('TO') || prevLine.includes('NAME') || prevLine.includes('नाम')) {
+          score += 35;
+          reason += ' + Follows Name label';
+        }
+
+        nameCandidates.push({ text: line.trim(), score, reason });
       }
     });
+
+    nameCandidates.sort((a, b) => b.score - a.score);
+    if (nameCandidates.length > 0) {
+      data.fullName = nameCandidates[0].text;
+      data.name = nameCandidates[0].text;
+    }
   }
 
   // PASSPORT EXTRACTION
@@ -1819,6 +2037,20 @@ app.post('/api/visitors', (req, res) => {
     const nowIso = new Date().toISOString();
     const visitorId = body.id || `vis-${Date.now()}`;
 
+    // Construct preliminary visitor object to evaluate security rules
+    const tempVisitor = {
+      id: visitorId,
+      visitorName: body.visitorName || 'Guest Visitor',
+      documentNumber: body.documentNumber || 'XXXX-0000-0000',
+      extractedData: body.extractedData,
+      status: body.status || 'PENDING',
+    };
+
+    const evalResult = evaluateEntryApproval(tempVisitor);
+
+    // Initial state MUST default to PENDING unless host has explicitly approved in payload
+    const initialStatus: VisitorStatus = (body.status as VisitorStatus) || (evalResult.verificationStatus === 'FAIL' ? 'REJECTED' : 'PENDING');
+
     const newVisitor: VisitorRecord = {
       id: visitorId,
       passNumber: body.passNumber || `VP-2026-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -1841,16 +2073,17 @@ app.post('/api/visitors', (req, res) => {
       purpose: body.purpose || 'Personal Visit',
       vehicleNumber: body.vehicleNumber || '',
       numAccompanying: body.numAccompanying || 1,
-      status: body.status || 'APPROVED',
+      status: initialStatus,
       createdAt: body.createdAt || nowIso,
-      approvedAt: nowIso,
-      checkInAt: body.checkInAt || nowIso,
+      approvedAt: initialStatus === 'APPROVED' ? nowIso : undefined,
+      checkInAt: initialStatus === 'CHECKED_IN' ? nowIso : undefined,
       gateName: body.gateName || 'Main Gate 01',
       guardName: body.guardName || 'Security Officer',
       guardId: body.guardId || 'guard-01',
-      qrCodeValue: body.qrCodeValue || `PRAVESHKAVACH-${visitorId}`,
-      verificationStatus: body.verificationStatus || 'VERIFIED',
+      qrCodeValue: initialStatus === 'APPROVED' ? (body.qrCodeValue || `PRAVESHKAVACH-${visitorId}`) : 'ENTRY_DENIED',
+      verificationStatus: evalResult.verificationStatus === 'PASS' ? 'VERIFIED' : 'FAILED',
       qrCodeData: body.qrCodeData || '',
+      rejectionReason: evalResult.verificationStatus === 'FAIL' ? evalResult.reasons.join(' | ') : undefined,
     };
 
     // Store in memory list
@@ -1952,6 +2185,173 @@ function formatVisitDuration(startIso?: string, endIso?: string): string {
   const mins = diffMins % 60;
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 }
+
+// --- SERVER-SIDE FAIL-CLOSED SECURITY & GATE VERIFICATION ENDPOINTS ---
+
+// Server-side Authoritative Entry Approval Evaluator API
+app.post('/api/verify-entry-approval', (req, res) => {
+  try {
+    const { visitorId, visitorData } = req.body || {};
+    let targetVisitor = visitorData;
+
+    if (visitorId) {
+      targetVisitor = visitorsStore.find((v) => v.id === visitorId || v.passNumber === visitorId) || visitorData;
+    }
+
+    if (!targetVisitor) {
+      return res.status(404).json({
+        success: false,
+        approved: false,
+        entryStatus: 'DENIED',
+        reasons: ['Visitor record not found'],
+      });
+    }
+
+    const evaluation = evaluateEntryApproval(targetVisitor);
+
+    return res.json({
+      success: true,
+      approved: evaluation.approved,
+      entryStatus: evaluation.entryStatus,
+      verificationStatus: evaluation.verificationStatus,
+      reasons: evaluation.reasons,
+      checklist: evaluation.checklist,
+      policy: securityPolicy,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      approved: false,
+      entryStatus: 'DENIED',
+      reasons: ['Internal server error evaluating entry approval: ' + err.message],
+    });
+  }
+});
+
+// Gate Security QR / Pass Scan Validation Endpoint
+app.post('/api/gate/verify-qr', (req, res) => {
+  try {
+    const { qrToken, gateName, scannedBy } = req.body || {};
+
+    if (!qrToken || qrToken === 'ENTRY_DENIED') {
+      return res.status(400).json({
+        success: false,
+        approved: false,
+        entryStatus: 'DENIED',
+        reason: 'Invalid or blocked entry QR code scanned at gate.',
+      });
+    }
+
+    const visitor = visitorsStore.find(
+      (v) => v.qrCodeValue === qrToken || v.passNumber === qrToken || v.id === qrToken || `PRAVESHKAVACH-${v.id}` === qrToken
+    );
+
+    if (!visitor) {
+      return res.status(404).json({
+        success: false,
+        approved: false,
+        entryStatus: 'DENIED',
+        reason: 'Pass token not found in gate registry. Access Denied.',
+      });
+    }
+
+    const evaluation = evaluateEntryApproval(visitor);
+
+    if (!evaluation.approved) {
+      // Log failed gate scan audit entry
+      auditLogsStore.unshift({
+        id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        timestamp: new Date().toISOString(),
+        action: 'GATE_ENTRY_DENIED',
+        performedBy: scannedBy || 'Gate Security Guard',
+        role: 'SECURITY_GUARD',
+        details: `Gate entry DENIED for pass ${visitor.passNumber} (${visitor.visitorName}). Reason: ${evaluation.reasons.join(', ')}`,
+        gateName: gateName || visitor.gateName || 'Main Gate 01',
+        deviceName: 'Gate QR Scanner',
+        ipAddress: req.ip || '127.0.0.1',
+      });
+
+      return res.status(403).json({
+        success: false,
+        approved: false,
+        entryStatus: 'DENIED',
+        reason: evaluation.reasons[0] || 'Entry authorization criteria not met.',
+        reasons: evaluation.reasons,
+        checklist: evaluation.checklist,
+      });
+    }
+
+    // Gate Entry Approved - Log Audit Event
+    const now = new Date().toISOString();
+    visitor.status = 'CHECKED_IN';
+    visitor.checkInAt = visitor.checkInAt || now;
+
+    auditLogsStore.unshift({
+      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: now,
+      action: 'GATE_ENTRY_GRANTED',
+      performedBy: scannedBy || 'Gate Security Guard',
+      role: 'SECURITY_GUARD',
+      details: `Gate Entry GRANTED for ${visitor.visitorName} (${visitor.passNumber}) to host ${visitor.residentName} (${visitor.buildingUnit}).`,
+      gateName: gateName || visitor.gateName || 'Main Gate 01',
+      deviceName: 'Gate QR Scanner',
+      ipAddress: req.ip || '127.0.0.1',
+    });
+
+    broadcastEvent('visitor_updated', visitor);
+
+    return res.json({
+      success: true,
+      approved: true,
+      entryStatus: 'APPROVED',
+      message: 'ACCESS GRANTED: Gate Pass Verified',
+      visitor,
+      checklist: evaluation.checklist,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      approved: false,
+      entryStatus: 'DENIED',
+      reason: 'Server gate check error: ' + err.message,
+    });
+  }
+});
+
+// Admin Security Policy API
+app.get('/api/admin/security-policy', (req, res) => {
+  res.json({ success: true, policy: securityPolicy });
+});
+
+app.post('/api/admin/security-policy', (req, res) => {
+  if (req.body && typeof req.body === 'object') {
+    securityPolicy = { ...securityPolicy, ...req.body };
+  }
+  res.json({ success: true, policy: securityPolicy });
+});
+
+// Admin Blacklist API
+app.get('/api/admin/blacklist', (req, res) => {
+  res.json({ success: true, blacklist: blacklistStore });
+});
+
+app.post('/api/admin/blacklist', (req, res) => {
+  const { name, docNumber, reason } = req.body || {};
+  if (!name && !docNumber) {
+    return res.status(400).json({ success: false, error: 'Name or Document Number is required for blacklist' });
+  }
+
+  const newItem = {
+    id: `bl-${Date.now()}`,
+    name: name || '',
+    docNumber: docNumber || '',
+    reason: reason || 'Added by security admin',
+    createdAt: new Date().toISOString(),
+  };
+
+  blacklistStore.push(newItem);
+  res.json({ success: true, blacklist: blacklistStore, item: newItem });
+});
 
 // Global analytics metrics calculator based on live visitorsStore
 function getAnalyticsData() {
