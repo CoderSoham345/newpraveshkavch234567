@@ -15,7 +15,8 @@ import {
   ZapOff,
   RotateCcw,
   Settings,
-  ArrowRight
+  ArrowRight,
+  Image as ImageIcon
 } from 'lucide-react';
 import { DocumentType } from '../types';
 import { 
@@ -761,31 +762,79 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
       )}
 
       {/* Bottom Camera Shutter Bar */}
-      <div className="absolute bottom-3 inset-x-0 z-20 flex flex-col items-center justify-center px-4 space-y-2">
+      <div className="absolute bottom-3 inset-x-0 z-20 flex items-center justify-center gap-3 px-4">
         
-        {/* Auto-scan Progress Ring Indicator */}
-        {isAutoScanMode && autoCaptureProgress > 0 && (
-          <div className="w-48 bg-slate-900/90 border border-amber-500/50 rounded-full h-2 overflow-hidden shadow-lg backdrop-blur-md">
-            <div 
-              className="bg-gradient-to-r from-amber-400 to-emerald-400 h-full transition-all duration-75"
-              style={{ width: `${autoCaptureProgress}%` }}
-            />
-          </div>
-        )}
+        {/* Hidden File Input for Gallery / Document Upload */}
+        <input
+          type="file"
+          id="gallery-file-input"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const dataUrl = event.target?.result as string;
+              if (dataUrl) {
+                const img = new Image();
+                img.onload = () => {
+                  const tempCanvas = document.createElement('canvas');
+                  tempCanvas.width = img.naturalWidth || 1280;
+                  tempCanvas.height = img.naturalHeight || 720;
+                  const ctx = tempCanvas.getContext('2d');
+                  if (ctx) {
+                    ctx.drawImage(img, 0, 0);
+                    const marginX = tempCanvas.width * 0.08;
+                    const marginY = tempCanvas.height * 0.12;
+                    const galleryCorners: QuadCorners = {
+                      topLeft: { x: marginX, y: marginY },
+                      topRight: { x: tempCanvas.width - marginX, y: marginY },
+                      bottomRight: { x: tempCanvas.width - marginX, y: tempCanvas.height - marginY },
+                      bottomLeft: { x: marginX, y: tempCanvas.height - marginY },
+                    };
+                    const cropped = cropAndStraightenDocument(tempCanvas, galleryCorners);
+                    onCaptured(cropped, null);
+                  }
+                };
+                img.src = dataUrl;
+              }
+            };
+            reader.readAsDataURL(file);
+          }}
+        />
 
+        {/* Gallery Import Button */}
         <button
+          type="button"
+          onClick={() => document.getElementById('gallery-file-input')?.click()}
+          className="px-3.5 py-3 rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-700/80 shadow-lg backdrop-blur-md flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer"
+          title="Import from Gallery"
+          id="btn-import-gallery"
+        >
+          <ImageIcon className="w-4 h-4 text-cyan-400" />
+          <span className="hidden sm:inline">Gallery</span>
+        </button>
+
+        {/* Shutter Capture Button - ALWAYS ENABLED FOR MANUAL CAPTURE FALLBACK */}
+        <button
+          type="button"
           onClick={() => triggerCaptureAction(null)}
-          disabled={!isReadyToCapture || isCapturing}
-          className={`relative group px-8 py-3.5 rounded-2xl font-black text-xs sm:text-sm shadow-2xl flex items-center gap-2.5 uppercase tracking-wider transition-all transform ${
+          disabled={isCapturing}
+          className={`relative group px-6 sm:px-8 py-3.5 rounded-2xl font-black text-xs sm:text-sm shadow-2xl flex items-center gap-2.5 uppercase tracking-wider transition-all transform cursor-pointer ${
             isReadyToCapture && !isCapturing
-              ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:scale-105 active:scale-95 text-slate-950 shadow-amber-400/40 cursor-pointer ring-4 ring-amber-400/30'
-              : 'bg-slate-900/90 text-slate-500 border border-slate-800 cursor-not-allowed opacity-60'
+              ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:scale-105 active:scale-95 text-slate-950 shadow-amber-400/40 ring-4 ring-amber-400/30'
+              : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border border-cyan-400/40 shadow-cyan-500/20 active:scale-95'
           }`}
           id="btn-manual-capture-canvas"
         >
           <Camera className="w-5 h-5" />
           <span>
-            {isReadyToCapture ? 'CAPTURE DOCUMENT' : 'ALIGN DOCUMENT INSIDE FRAME'}
+            {isCapturing 
+              ? 'CAPTURING...' 
+              : isReadyToCapture 
+              ? 'CAPTURE DOCUMENT (AUTO ALIGNED)' 
+              : 'CAPTURE DOCUMENT (MANUAL)'}
           </span>
         </button>
 

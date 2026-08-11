@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { DocumentType } from '../types';
 import { DocumentScannerCanvas } from './DocumentScannerCanvas';
+import { AdobeScanEditor, ScannedPageItem } from './AdobeScanEditor';
 
 interface Step4ScanBackProps {
   docType: DocumentType;
@@ -24,19 +25,39 @@ export const Step4ScanBack: React.FC<Step4ScanBackProps> = ({
 }) => {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [qrScannedData, setQrScannedData] = useState<string | null>(null);
+  const [scannedPages, setScannedPages] = useState<ScannedPageItem[]>([]);
+  const [isEditingInAdobeScan, setIsEditingInAdobeScan] = useState<boolean>(false);
 
   const handleCanvasCaptured = (croppedDataUrl: string, qrData?: string | null) => {
     setCapturedImage(croppedDataUrl);
     if (qrData) {
       setQrScannedData(qrData);
     }
+
+    const newPage: ScannedPageItem = {
+      id: `page-back-${Date.now()}`,
+      rawImage: croppedDataUrl,
+      processedImage: croppedDataUrl,
+      corners: {
+        topLeft: { x: 50, y: 50 },
+        topRight: { x: 1150, y: 50 },
+        bottomRight: { x: 1150, y: 700 },
+        bottomLeft: { x: 50, y: 700 },
+      },
+      rotation: 0,
+      filter: 'AUTO',
+      docType,
+    };
+
+    setScannedPages([newPage]);
+    setIsEditingInAdobeScan(true);
   };
 
   const handleConfirmBack = () => {
-    if (capturedImage) {
-      // Send extracted address if QR code contained address or allow user manual entry on verify screen
+    const finalImg = scannedPages[0]?.processedImage || capturedImage;
+    if (finalImg) {
       const addressFromQr = qrScannedData ? qrScannedData : '';
-      onBackCaptureCompleted(capturedImage, {
+      onBackCaptureCompleted(finalImg, {
         address: addressFromQr,
         pinCode: addressFromQr ? (addressFromQr.match(/\b\d{6}\b/)?.[0] || '') : '',
       });
@@ -62,7 +83,7 @@ export const Step4ScanBack: React.FC<Step4ScanBackProps> = ({
             <span>SCAN DOCUMENT - BACK SIDE & ADDRESS</span>
           </h2>
           <p className="text-xs text-slate-400">
-            Scan back side of {docType} for address extraction and UIDAI / Barcode QR decoding.
+            Scan back side of {docType} for address extraction and UIDAI / Barcode QR decoding with Adobe Scan editor.
           </p>
         </div>
 
@@ -76,36 +97,43 @@ export const Step4ScanBack: React.FC<Step4ScanBackProps> = ({
       </div>
 
       {/* Mode Bar */}
-      <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span className="text-xs font-bold text-white">Back Side Document Scanner</span>
-        </div>
-        <span className="px-2.5 py-1 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-[10px] font-extrabold uppercase">
-          Manual Capture Only
-        </span>
-      </div>
-
-      {/* Real-time OpenCV Canvas or Captured Back Image */}
-      {capturedImage ? (
-        <div className="relative rounded-2xl bg-black border border-emerald-500/40 overflow-hidden shadow-2xl aspect-[16/10] sm:aspect-[16/9] flex flex-col items-center justify-center p-4">
-          <img
-            src={capturedImage}
-            alt="Cropped Back Document"
-            className="w-full h-full object-contain rounded-lg"
-          />
-          <div className="absolute top-4 left-4 bg-emerald-950/80 border border-emerald-500 text-emerald-300 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-2 backdrop-blur-md">
+      {!isEditingInAdobeScan && (
+        <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>Back Document Captured</span>
+            <span className="text-xs font-bold text-white">Back Side Document Scanner</span>
           </div>
-
-          {qrScannedData && (
-            <div className="absolute bottom-4 left-4 bg-cyan-950/80 border border-cyan-500 text-cyan-300 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-2 backdrop-blur-md">
-              <QrCode className="w-4 h-4 text-cyan-400" />
-              <span>QR Code Decoded</span>
-            </div>
-          )}
+          <span className="px-2.5 py-1 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-[10px] font-extrabold uppercase">
+            Auto & Manual Capture
+          </span>
         </div>
+      )}
+
+      {/* Real-time OpenCV Canvas or Adobe Scan Editor */}
+      {isEditingInAdobeScan && scannedPages.length > 0 ? (
+        <AdobeScanEditor
+          pages={scannedPages}
+          onUpdatePages={(updated) => setScannedPages(updated)}
+          onAddPage={() => {
+            setIsEditingInAdobeScan(false);
+            setCapturedImage(null);
+          }}
+          onRetakeAll={() => {
+            setIsEditingInAdobeScan(false);
+            setScannedPages([]);
+            setCapturedImage(null);
+          }}
+          onConfirmScans={(finalPages) => {
+            const finalImg = finalPages[0]?.processedImage || capturedImage;
+            if (finalImg) {
+              const addressFromQr = qrScannedData ? qrScannedData : '';
+              onBackCaptureCompleted(finalImg, {
+                address: addressFromQr,
+                pinCode: addressFromQr ? (addressFromQr.match(/\b\d{6}\b/)?.[0] || '') : '',
+              });
+            }
+          }}
+        />
       ) : (
         <DocumentScannerCanvas
           selectedDocType={docType}
@@ -129,41 +157,22 @@ export const Step4ScanBack: React.FC<Step4ScanBackProps> = ({
         </div>
       )}
 
-      {/* Action Buttons */}
-      <div className="flex items-center justify-end gap-3 bg-slate-900 p-4 rounded-xl border border-slate-800">
-        {capturedImage ? (
-          <>
-            <button
-              onClick={() => {
-                setCapturedImage(null);
-                setQrScannedData(null);
-              }}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 border border-slate-700"
-              id="btn-retake-back-doc"
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span>Retake Back Side</span>
-            </button>
-
-            <button
-              onClick={handleConfirmBack}
-              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-1.5"
-              id="btn-confirm-back-side"
-            >
-              <span>CONTINUE TO FACE VERIFICATION</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </>
-        ) : (
+      {/* Action Bar when not editing */}
+      {!isEditingInAdobeScan && (
+        <div className="flex items-center justify-between bg-slate-900 p-4 rounded-xl border border-slate-800">
+          <p className="text-xs text-slate-400">
+            Back side capture is optional for some document types.
+          </p>
           <button
             onClick={onBackSkipped}
-            className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-2"
+            className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-2 border border-slate-700 cursor-pointer"
+            id="btn-skip-back-footer"
           >
-            <span>Skip & Proceed to Face Check</span>
+            <span>Skip & Proceed</span>
             <ArrowRight className="w-4 h-4" />
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
     </div>
   );
