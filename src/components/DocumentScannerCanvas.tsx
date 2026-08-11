@@ -18,7 +18,8 @@ import {
   ArrowRight,
   Scissors,
   Sliders,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Lock
 } from 'lucide-react';
 import { DocumentType } from '../types';
 import { 
@@ -29,6 +30,11 @@ import {
   ScanValidationResult,
   DetectedQuad
 } from '../utils/cvEngine';
+import { 
+  ScanQualityValidation, 
+  validateDocumentScanQuality 
+} from '../utils/scanValidator';
+import { safeFetch } from '../utils/safeApi';
 import { 
   initializeDocumentCamera, 
   stopCameraStream, 
@@ -42,7 +48,7 @@ import {
 
 interface DocumentScannerCanvasProps {
   selectedDocType: DocumentType;
-  onCaptured: (croppedImageUrl: string, qrCodeData?: string | null) => void;
+  onCaptured: (croppedImageUrl: string, qrCodeData?: string | null, validation?: ScanQualityValidation | null, ocrData?: any) => void;
   onOpenEditor?: (croppedImageUrl: string) => void;
 }
 
@@ -65,10 +71,13 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
   const [isAutoScanMode, setIsAutoScanMode] = useState<boolean>(true); // Auto-capture default
   const [showDebugPanel, setShowDebugPanel] = useState<boolean>(false);
 
-  // Captured Image State for Freeze/Retake/Continue Flow
+  // Captured Image State & Quality Validation Pipeline
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [capturedQrData, setCapturedQrData] = useState<string | null>(null);
   const [detectionFailed, setDetectionFailed] = useState<boolean>(false);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [scanValidation, setScanValidation] = useState<ScanQualityValidation | null>(null);
+  const [extractedOcrData, setExtractedOcrData] = useState<any | null>(null);
   const highResCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Detection and Validation States
@@ -195,11 +204,12 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
     setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
   };
 
-  // Capture frame action
-  const triggerCaptureAction = (resultToCapture: ScanValidationResult | null) => {
-    if (!videoRef.current || isCapturing) return;
+  // Capture frame action with Quality Validation & OCR Pipeline
+  const triggerCaptureAction = async (resultToCapture: ScanValidationResult | null) => {
+    if (!videoRef.current || isCapturing || isAnalyzing) return;
     logCamera('Capture frame started');
     setIsCapturing(true);
+    setIsAnalyzing(true);
     setDetectionFailed(false);
 
     const video = videoRef.current;
@@ -238,31 +248,71 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
         };
       }
 
+      let croppedDataUrl = '';
       if (finalCorners) {
-        const croppedDataUrl = cropAndStraightenDocument(highResCanvas, finalCorners);
-        logCamera('Frame captured with high-res auto crop & perspective transform');
-        setCapturedImage(croppedDataUrl);
-        setCapturedQrData(qrData);
-        setCameraState('CAPTURED');
-        handleStopCamera();
-        setIsCapturing(false);
+        croppedDataUrl = cropAndStraightenDocument(highResCanvas, finalCorners);
       } else {
-        // AUTOMATIC DETECTION FAILED - SHOW FAILURE FALLBACK
-        logCamera('Document edges could not be detected on high-res capture');
-        setDetectionFailed(true);
-        setCapturedQrData(qrData);
-        setCameraState('CAPTURED');
-        handleStopCamera();
-        setIsCapturing(false);
+        const fullCorners: QuadCorners = {
+          topLeft: { x: 0, y: 0 },
+          topRight: { x: highResCanvas.width, y: 0 },
+          bottomRight: { x: highResCanvas.width, y: highResCanvas.height },
+          bottomLeft: { x: 0, y: highResCanvas.height },
+        };
+        croppedDataUrl = cropAndStraightenDocument(highResCanvas, fullCorners);
       }
+
+      // Create image element to draw cropped dataUrl to canvas for pixel quality inspection
+      const croppedCanvas = document.createElement('canvas');
+      const croppedImg = new Image();
+      await new Promise<void>((resolve) => {
+        croppedImg.onload = () => {
+          croppedCanvas.width = croppedImg.naturalWidth || 1200;
+          croppedCanvas.height = croppedImg.naturalHeight || 760;
+          const cCtx = croppedCanvas.getContext('2d');
+          if (cCtx) cCtx.drawImage(croppedImg, 0, 0);
+          resolve();
+        };
+        croppedImg.onerror = () => resolve();
+        croppedImg.src = croppedDataUrl;
+      });
+
+      // CALL OCR ENGINE FOR FIELD EXTRACTION
+      let ocrData: any = null;
+      try {
+        const response = await safeFetch('/api/ocr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: croppedDataUrl, docType: selectedDocType }),
+        });
+        if (response.ok && response.data?.extractedData) {
+          ocrData = response.data.extractedData;
+        }
+      } catch (err) {
+        console.error('OCR analysis failed during capture:', err);
+      }
+
+      // EVALUATE 8-POINT QUALITY VALIDATION GATE
+      const validation = validateDocumentScanQuality(croppedCanvas, finalCorners, ocrData, selectedDocType);
+
+      logCamera('Frame captured, analyzed and validated.');
+      setCapturedImage(croppedDataUrl);
+      setCapturedQrData(qrData);
+      setExtractedOcrData(ocrData);
+      setScanValidation(validation);
+      setCameraState('CAPTURED');
+      handleStopCamera();
+      setIsCapturing(false);
+      setIsAnalyzing(false);
     } else {
       setIsCapturing(false);
+      setIsAnalyzing(false);
     }
   };
 
   // Fallback: Use full image if automatic detection fails
-  const handleUseFullImageFallback = () => {
+  const handleUseFullImageFallback = async () => {
     if (highResCanvasRef.current) {
+      setIsAnalyzing(true);
       const canvas = highResCanvasRef.current;
       const fullCorners: QuadCorners = {
         topLeft: { x: 0, y: 0 },
@@ -271,16 +321,39 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
         bottomLeft: { x: 0, y: canvas.height },
       };
       const enhancedFullUrl = cropAndStraightenDocument(canvas, fullCorners);
-      onCaptured(enhancedFullUrl, capturedQrData);
+
+      let ocrData: any = null;
+      try {
+        const response = await safeFetch('/api/ocr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: enhancedFullUrl, docType: selectedDocType }),
+        });
+        if (response.ok && response.data?.extractedData) {
+          ocrData = response.data.extractedData;
+        }
+      } catch (err) {
+        console.error('Fallback OCR error:', err);
+      }
+
+      const validation = validateDocumentScanQuality(canvas, fullCorners, ocrData, selectedDocType);
+      setCapturedImage(enhancedFullUrl);
+      setExtractedOcrData(ocrData);
+      setScanValidation(validation);
+      setDetectionFailed(false);
+      setIsAnalyzing(false);
     }
   };
 
-  // Retake captured photo
+  // Retake captured photo - FULL RESET OF ALL SCAN & QUALITY STATES
   const handleRetake = () => {
     setCapturedImage(null);
     setCapturedQrData(null);
     setScanResult(null);
+    setScanValidation(null);
+    setExtractedOcrData(null);
     setDetectionFailed(false);
+    setIsAnalyzing(false);
     highResCanvasRef.current = null;
     steadyFrameCountRef.current = 0;
     setAutoCaptureProgress(0);
@@ -573,46 +646,293 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
     );
   }
 
-  // --- CAPTURED STATE DISPLAY ---
-  if (cameraState === 'CAPTURED' && capturedImage) {
+  // --- ANALYZING / OCR PROCESSING STATE ---
+  if (isAnalyzing || cameraState === 'ANALYZING') {
     return (
-      <div className="relative w-full rounded-2xl bg-slate-950 border border-emerald-500/40 overflow-hidden shadow-2xl flex flex-col items-center justify-center p-4 sm:p-6 space-y-4 animate-fade-in">
-        <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm tracking-wide">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-          <span>DOCUMENT DETECTED ✓ Auto-cropped & Straightened</span>
+      <div className="w-full rounded-2xl bg-slate-950 border border-cyan-500/50 p-8 text-center flex flex-col items-center justify-center space-y-6 shadow-2xl animate-fade-in">
+        <div className="relative">
+          <div className="w-20 h-20 rounded-full border-4 border-cyan-500/30 border-t-cyan-400 animate-spin flex items-center justify-center">
+          </div>
+          <Scan className="w-8 h-8 text-cyan-400 absolute inset-0 m-auto animate-pulse" />
         </div>
 
-        <div className="relative max-w-lg w-full rounded-xl overflow-hidden border-2 border-emerald-500/50 shadow-2xl bg-slate-900">
-          <img 
-            src={capturedImage} 
-            alt="Captured Document" 
-            className="w-full h-auto object-contain max-h-[350px] mx-auto"
-          />
-          {capturedQrData && (
-            <div className="absolute bottom-2 left-2 right-2 bg-slate-950/90 border border-emerald-500/50 p-2 rounded-lg text-xs font-mono text-emerald-300 truncate flex items-center gap-2">
-              <QrCode className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>QR Code Extracted</span>
+        <div className="space-y-2 max-w-md">
+          <h3 className="text-base font-extrabold text-white tracking-wider uppercase">
+            ANALYZING SCAN QUALITY & AADHAAR DETAILS
+          </h3>
+          <p className="text-xs text-slate-300">
+            Running 8-point automated validation: Brightness, Blur, Glare, Edges, Raw OCR, Name & Address Extraction...
+          </p>
+        </div>
+
+        <div className="w-full max-w-sm bg-slate-900 rounded-xl p-3 border border-slate-800 space-y-2 text-left text-xs font-mono text-slate-300">
+          <div className="flex items-center gap-2 text-cyan-400 font-bold">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            <span>1. Document Edge & Boundary Extraction</span>
+          </div>
+          <div className="flex items-center gap-2 text-cyan-400 font-bold">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            <span>2. Brightness, Blur & Glare Inspection</span>
+          </div>
+          <div className="flex items-center gap-2 text-cyan-400 font-bold">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            <span>3. Real Pixel Normalization & Enhancement</span>
+          </div>
+          <div className="flex items-center gap-2 text-cyan-400 font-bold">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            <span>4. Aadhaar OCR & Required Fields Validation</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- CAPTURED STATE DISPLAY WITH QUALITY GATE & HARD LOCK ---
+  if (cameraState === 'CAPTURED' && capturedImage) {
+    const canContinue = scanValidation?.status === 'PASS';
+
+    return (
+      <div className="relative w-full rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden shadow-2xl flex flex-col items-center p-4 sm:p-6 space-y-5 animate-fade-in">
+        
+        {/* Status Header Banner */}
+        <div className={`w-full p-4 rounded-xl border flex items-center justify-between ${
+          canContinue 
+            ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300' 
+            : 'bg-rose-950/80 border-rose-500/60 text-rose-300'
+        }`}>
+          <div className="flex items-start gap-3">
+            {canContinue ? (
+              <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0 mt-0.5" />
+            ) : (
+              <AlertTriangle className="w-6 h-6 text-rose-400 shrink-0 mt-0.5" />
+            )}
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-extrabold uppercase tracking-wider">
+                  {canContinue ? 'SCAN ACCEPTED — QUALITY PASSED' : 'SCAN REJECTED — RETAKE REQUIRED'}
+                </h3>
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${
+                  canContinue ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500 text-white'
+                }`}>
+                  {canContinue ? '100% VERIFIED' : 'ACTION REQUIRED'}
+                </span>
+              </div>
+              <p className="text-xs opacity-90 mt-0.5">
+                {canContinue
+                  ? 'All document boundaries, image quality metrics, and required Aadhaar fields validated successfully.'
+                  : 'The scan failed strict quality validation. Please review reasons below and retake the photo.'}
+              </p>
             </div>
-          )}
+          </div>
+          <div className="text-right shrink-0 font-mono text-xs font-bold">
+            <span className="block text-[10px] uppercase opacity-75">SCORE</span>
+            <span className="text-lg font-black">{scanValidation?.score ?? 0}/100</span>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-2.5 w-full max-w-md pt-2">
+        {/* Document Image Preview & Quality Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 w-full">
+          
+          {/* Captured Document Preview */}
+          <div className="lg:col-span-5 flex flex-col items-center justify-center bg-slate-900/90 rounded-xl p-3 border border-slate-800 relative">
+            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider self-start mb-2 flex items-center gap-1">
+              <Scan className="w-3.5 h-3.5 text-cyan-400" />
+              <span>PROCESSED & CROPPED DOCUMENT</span>
+            </span>
+
+            <div className="relative w-full rounded-lg overflow-hidden border border-slate-700 bg-black">
+              <img 
+                src={capturedImage} 
+                alt="Captured Document" 
+                className="w-full h-auto object-contain max-h-[300px] mx-auto"
+              />
+              {capturedQrData && (
+                <div className="absolute bottom-2 left-2 right-2 bg-slate-950/90 border border-emerald-500/50 p-2 rounded-lg text-[10px] font-mono text-emerald-300 truncate flex items-center gap-1.5">
+                  <QrCode className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>QR Code Decoded</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Quality Checklist Panel */}
+          <div className="lg:col-span-7 bg-slate-900/90 rounded-xl p-4 border border-slate-800 space-y-3">
+            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block border-b border-slate-800 pb-2">
+              SCAN QUALITY & FIELD CHECKLIST
+            </span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-semibold">
+              
+              {/* Document Boundary */}
+              <div className={`p-2 rounded-lg border flex items-center justify-between ${
+                scanValidation?.documentComplete
+                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                  : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+              }`}>
+                <span className="flex items-center gap-1.5">
+                  {scanValidation?.documentComplete ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span>4 Corners / Boundary</span>
+                </span>
+                <span className="text-[10px] font-mono">{scanValidation?.documentComplete ? 'Complete' : 'Cut Off'}</span>
+              </div>
+
+              {/* Brightness */}
+              <div className={`p-2 rounded-lg border flex items-center justify-between ${
+                scanValidation?.brightness.passed
+                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                  : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+              }`}>
+                <span className="flex items-center gap-1.5">
+                  {scanValidation?.brightness.passed ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span>Brightness / Light</span>
+                </span>
+                <span className="text-[10px] font-mono">{scanValidation?.brightness.score}%</span>
+              </div>
+
+              {/* Sharpness */}
+              <div className={`p-2 rounded-lg border flex items-center justify-between ${
+                scanValidation?.sharpness.passed
+                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                  : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+              }`}>
+                <span className="flex items-center gap-1.5">
+                  {scanValidation?.sharpness.passed ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span>Sharpness / Clarity</span>
+                </span>
+                <span className="text-[10px] font-mono">{scanValidation?.sharpness.score}%</span>
+              </div>
+
+              {/* Glare */}
+              <div className={`p-2 rounded-lg border flex items-center justify-between ${
+                scanValidation?.glare.passed
+                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                  : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+              }`}>
+                <span className="flex items-center gap-1.5">
+                  {scanValidation?.glare.passed ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span>Glare & Reflection</span>
+                </span>
+                <span className="text-[10px] font-mono">{scanValidation?.glare.passed ? 'No Glare' : 'Glare'}</span>
+              </div>
+
+              {/* Cardholder Name */}
+              <div className={`p-2 rounded-lg border flex items-center justify-between col-span-1 sm:col-span-2 ${
+                scanValidation?.fields.fullName.passed
+                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                  : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+              }`}>
+                <span className="flex items-center gap-1.5 truncate">
+                  {scanValidation?.fields.fullName.passed ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span className="truncate">Name: <strong>{scanValidation?.fields.fullName.value}</strong></span>
+                </span>
+                <span className="text-[10px] font-mono shrink-0 ml-2">
+                  {scanValidation?.fields.fullName.passed ? 'Validated' : 'Failed'}
+                </span>
+              </div>
+
+              {/* Multiline Address */}
+              <div className={`p-2 rounded-lg border flex items-center justify-between col-span-1 sm:col-span-2 ${
+                scanValidation?.fields.address.passed
+                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                  : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+              }`}>
+                <span className="flex items-center gap-1.5 truncate">
+                  {scanValidation?.fields.address.passed ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span className="truncate">Address: <strong>{scanValidation?.fields.address.value}</strong></span>
+                </span>
+                <span className="text-[10px] font-mono shrink-0 ml-2">
+                  {scanValidation?.fields.address.passed ? 'Validated' : 'Failed'}
+                </span>
+              </div>
+
+              {/* DOB / Year */}
+              <div className={`p-2 rounded-lg border flex items-center justify-between ${
+                scanValidation?.fields.dateOfBirth.passed
+                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                  : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+              }`}>
+                <span className="flex items-center gap-1.5 truncate">
+                  {scanValidation?.fields.dateOfBirth.passed ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span className="truncate">DOB: <strong>{scanValidation?.fields.dateOfBirth.value}</strong></span>
+                </span>
+              </div>
+
+              {/* Portrait */}
+              <div className="p-2 rounded-lg border bg-emerald-950/40 border-emerald-500/30 text-emerald-300 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Portrait Region</span>
+                </span>
+                <span className="text-[10px] font-mono">Preserved</span>
+              </div>
+
+            </div>
+
+            {/* Error Messages List if Failed */}
+            {scanValidation?.errors && scanValidation.errors.length > 0 && (
+              <div className="p-3 bg-rose-950/90 border border-rose-500/60 rounded-xl space-y-1 text-xs text-rose-200">
+                <div className="font-bold flex items-center gap-1 text-rose-300 uppercase tracking-wider text-[11px]">
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                  <span>REASONS FOR REJECTION:</span>
+                </div>
+                <ul className="list-disc list-inside space-y-0.5 text-[11px] leading-relaxed">
+                  {scanValidation.errors.map((err, i) => (
+                    <li key={i}>{err}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+        </div>
+
+        {/* Action Buttons Bar with Hard Gate Lock */}
+        <div className="flex flex-wrap items-center justify-between gap-3 w-full pt-2 border-t border-slate-800">
+          
           <button
             type="button"
             onClick={handleRetake}
-            className="flex-1 py-3 px-3 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
-            id="btn-retake-captured-doc"
+            className="py-3 px-5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
+            id="btn-retake-photo-gate"
           >
             <RotateCcw className="w-4 h-4 text-amber-400" />
-            <span>RETAKE</span>
+            <span>RETAKE PHOTO</span>
           </button>
 
           {onOpenEditor && (
             <button
               type="button"
               onClick={() => onOpenEditor(capturedImage)}
-              className="flex-1 py-3 px-3 rounded-xl text-xs font-bold bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/50 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
-              id="btn-edit-captured-doc"
+              className="py-3 px-4 rounded-xl text-xs font-bold bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/50 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+              id="btn-manual-crop-gate"
             >
               <Scissors className="w-4 h-4 text-cyan-400" />
               <span>MANUAL CROP / EDIT</span>
@@ -621,14 +941,27 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
 
           <button
             type="button"
-            onClick={handleContinue}
-            className="flex-1 py-3 px-4 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 shadow-lg border border-emerald-400/40 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
-            id="btn-continue-captured-doc"
+            disabled={!canContinue}
+            onClick={() => {
+              if (canContinue) {
+                onCaptured(capturedImage, capturedQrData, scanValidation, extractedOcrData);
+              }
+            }}
+            className={`py-3.5 px-6 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
+              canContinue
+                ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 shadow-lg shadow-emerald-500/20 border border-emerald-400 cursor-pointer active:scale-95'
+                : 'bg-slate-800/80 text-slate-500 border border-slate-700/80 cursor-not-allowed opacity-60'
+            }`}
+            id="btn-continue-quality-gate"
+            title={canContinue ? 'Proceed to next step' : 'Continue is locked until all quality checks pass'}
           >
-            <span>CONTINUE TO OCR</span>
+            {!canContinue && <Lock className="w-4 h-4 text-slate-500" />}
+            <span>CONTINUE TO NEXT STEP</span>
             <ArrowRight className="w-4 h-4" />
           </button>
+
         </div>
+
       </div>
     );
   }

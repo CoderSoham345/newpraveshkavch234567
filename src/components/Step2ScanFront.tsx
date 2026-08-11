@@ -92,13 +92,18 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
     return labels[type] || type;
   };
 
-  const handleCanvasCaptured = (croppedDataUrl: string, qrCodeData?: string | null) => {
+  const handleCanvasCaptured = (
+    croppedDataUrl: string, 
+    qrCodeData?: string | null,
+    validation?: any,
+    ocrData?: any
+  ) => {
     setCapturedImage(croppedDataUrl);
     if (qrCodeData) {
       setDetectedQrCode(qrCodeData);
     }
-    // Automatically proceed directly with the automatically cropped and straightened image
-    onCaptureCompleted(croppedDataUrl);
+    // Automatically proceed directly with the validated cropped image and extracted OCR data
+    onCaptureCompleted(croppedDataUrl, false, ocrData);
   };
 
   const handleConfirmCapturedImage = () => {
