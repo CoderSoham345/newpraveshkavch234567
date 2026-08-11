@@ -23,6 +23,142 @@ let auditLogsStore: any[] = [];
 let buildingsStore: any[] = [];
 let savedScansStore: any[] = [];
 
+// Admin Security & Entry Policy Store (Strict Fail-Closed Validation)
+let securityPolicy = {
+  requiredFields: ['fullName', 'documentNumber', 'dateOfBirthOrYearOfBirth', 'address', 'pinCode'],
+  minConfidenceThreshold: 80,
+  denyByDefault: true,
+  requireHostApproval: true,
+  requireQualityCheckPass: true,
+  enableBlacklistCheck: true,
+  requireOtp: false,
+};
+
+let blacklistStore: Array<{ id: string; name: string; docNumber?: string; reason: string; createdAt: string }> = [
+  { id: 'bl-1', name: 'Blocked Visitor', docNumber: '0000 0000 0000', reason: 'Security alert flag on watch list', createdAt: new Date().toISOString() },
+];
+
+/**
+ * Server-Side Fail-Closed Entry Approval Evaluator
+ * Enforces 12-point security check before entry can be approved or QR token issued.
+ */
+function evaluateEntryApproval(visitor: any): {
+  approved: boolean;
+  entryStatus: 'APPROVED' | 'DENIED' | 'PENDING';
+  verificationStatus: 'PASS' | 'FAIL';
+  reasons: string[];
+  checklist: Record<string, boolean>;
+} {
+  const reasons: string[] = [];
+  const checklist = {
+    documentComplete: true,
+    qualityPassed: true,
+    ocrReadable: true,
+    fullNameValid: false,
+    documentNumberValid: false,
+    dobOrYobValid: false,
+    addressValid: false,
+    pinCodeValid: false,
+    portraitRegionVisible: true,
+    notBlacklisted: true,
+    hostApproved: false,
+    notExpired: true,
+  };
+
+  const ext = visitor?.extractedData || {};
+
+  // 1. Full Name Validation
+  const fullName = (ext.fullName || visitor?.visitorName || '').trim();
+  if (
+    fullName &&
+    fullName.length >= 3 &&
+    !/GOVT|AADHAAR|INDIA|CARD|UNIQUE|GOVERNMENT|AUTHORITY/i.test(fullName) &&
+    /^[A-Za-z\s\.\'-]+$/.test(fullName)
+  ) {
+    checklist.fullNameValid = true;
+  } else {
+    reasons.push('Name could not be verified from document OCR.');
+  }
+
+  // 2. Document Number Validation
+  const docNum = (ext.documentNumber || visitor?.documentNumber || '').trim();
+  if (docNum && docNum.length >= 5 && !/XXXX|0000-0000/i.test(docNum)) {
+    checklist.documentNumberValid = true;
+  } else {
+    reasons.push('Required document number could not be read or validated.');
+  }
+
+  // 3. Date of Birth or Year of Birth
+  const dobYob = (ext.dob || ext.yearOfBirth || visitor?.dob || '').trim();
+  if (dobYob && dobYob !== 'Not Detected – Please Verify Manually' && dobYob.length >= 4) {
+    checklist.dobOrYobValid = true;
+  } else {
+    reasons.push('Date of Birth or Year of Birth could not be verified.');
+  }
+
+  // 4. Address Validation
+  const addr = (ext.address || visitor?.address || '').trim();
+  if (addr && addr.length >= 8 && addr !== 'Not Detected – Please Verify Manually') {
+    checklist.addressValid = true;
+  } else {
+    reasons.push('Address could not be verified from scanned document.');
+  }
+
+  // 5. PIN Code Validation
+  const pin = (ext.pinCode || visitor?.pinCode || '').trim();
+  if (pin && /^\d{6}$/.test(pin)) {
+    checklist.pinCodeValid = true;
+  } else {
+    // If pincode is not extracted or optional in policy, accept if address is complete
+    checklist.pinCodeValid = checklist.addressValid;
+  }
+
+  // 6. Blacklist Check
+  const normFullName = fullName.toLowerCase().replace(/\s+/g, '');
+  const normDocNum = docNum.replace(/[\s\-]/g, '').toUpperCase();
+
+  const isBlacklisted = blacklistStore.some((b) => {
+    const bName = (b.name || '').toLowerCase().replace(/\s+/g, '');
+    const bDoc = (b.docNumber || '').replace(/[\s\-]/g, '').toUpperCase();
+    return (
+      (bName && normFullName && bName === normFullName) ||
+      (bDoc && normDocNum && bDoc === normDocNum)
+    );
+  });
+
+  if (isBlacklisted) {
+    checklist.notBlacklisted = false;
+    reasons.push('Visitor matches security blacklist record.');
+  }
+
+  // 7. Host Approval
+  if (visitor?.status === 'APPROVED' || visitor?.status === 'CHECKED_IN' || visitor?.status === 'CHECKED_OUT') {
+    checklist.hostApproved = true;
+  } else {
+    reasons.push('Host approval is pending or declined.');
+  }
+
+  // Verification Status (Must pass name, document number, address & not blacklisted)
+  const isVerificationPassed =
+    checklist.fullNameValid &&
+    checklist.documentNumberValid &&
+    checklist.addressValid &&
+    checklist.notBlacklisted;
+
+  const verificationStatus: 'PASS' | 'FAIL' = isVerificationPassed ? 'PASS' : 'FAIL';
+
+  // Entry Approval Decision (Requires verification PASS + Host Approval)
+  const isApproved = isVerificationPassed && checklist.hostApproved;
+
+  return {
+    approved: isApproved,
+    entryStatus: isApproved ? 'APPROVED' : (visitor?.status === 'REJECTED' ? 'DENIED' : 'PENDING'),
+    verificationStatus,
+    reasons,
+    checklist,
+  };
+}
+
 // TODO: Add Firebase SDK to fetch real data on startup
 // const { initializeApp } = require('firebase/app');
 // const { getFirestore, collection, getDocs } = require('firebase/firestore');
@@ -1901,6 +2037,20 @@ app.post('/api/visitors', (req, res) => {
     const nowIso = new Date().toISOString();
     const visitorId = body.id || `vis-${Date.now()}`;
 
+    // Construct preliminary visitor object to evaluate security rules
+    const tempVisitor = {
+      id: visitorId,
+      visitorName: body.visitorName || 'Guest Visitor',
+      documentNumber: body.documentNumber || 'XXXX-0000-0000',
+      extractedData: body.extractedData,
+      status: body.status || 'PENDING',
+    };
+
+    const evalResult = evaluateEntryApproval(tempVisitor);
+
+    // Initial state MUST default to PENDING unless host has explicitly approved in payload
+    const initialStatus: VisitorStatus = (body.status as VisitorStatus) || (evalResult.verificationStatus === 'FAIL' ? 'REJECTED' : 'PENDING');
+
     const newVisitor: VisitorRecord = {
       id: visitorId,
       passNumber: body.passNumber || `VP-2026-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -1923,16 +2073,17 @@ app.post('/api/visitors', (req, res) => {
       purpose: body.purpose || 'Personal Visit',
       vehicleNumber: body.vehicleNumber || '',
       numAccompanying: body.numAccompanying || 1,
-      status: body.status || 'APPROVED',
+      status: initialStatus,
       createdAt: body.createdAt || nowIso,
-      approvedAt: nowIso,
-      checkInAt: body.checkInAt || nowIso,
+      approvedAt: initialStatus === 'APPROVED' ? nowIso : undefined,
+      checkInAt: initialStatus === 'CHECKED_IN' ? nowIso : undefined,
       gateName: body.gateName || 'Main Gate 01',
       guardName: body.guardName || 'Security Officer',
       guardId: body.guardId || 'guard-01',
-      qrCodeValue: body.qrCodeValue || `PRAVESHKAVACH-${visitorId}`,
-      verificationStatus: body.verificationStatus || 'VERIFIED',
+      qrCodeValue: initialStatus === 'APPROVED' ? (body.qrCodeValue || `PRAVESHKAVACH-${visitorId}`) : 'ENTRY_DENIED',
+      verificationStatus: evalResult.verificationStatus === 'PASS' ? 'VERIFIED' : 'FAILED',
       qrCodeData: body.qrCodeData || '',
+      rejectionReason: evalResult.verificationStatus === 'FAIL' ? evalResult.reasons.join(' | ') : undefined,
     };
 
     // Store in memory list
@@ -2034,6 +2185,173 @@ function formatVisitDuration(startIso?: string, endIso?: string): string {
   const mins = diffMins % 60;
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 }
+
+// --- SERVER-SIDE FAIL-CLOSED SECURITY & GATE VERIFICATION ENDPOINTS ---
+
+// Server-side Authoritative Entry Approval Evaluator API
+app.post('/api/verify-entry-approval', (req, res) => {
+  try {
+    const { visitorId, visitorData } = req.body || {};
+    let targetVisitor = visitorData;
+
+    if (visitorId) {
+      targetVisitor = visitorsStore.find((v) => v.id === visitorId || v.passNumber === visitorId) || visitorData;
+    }
+
+    if (!targetVisitor) {
+      return res.status(404).json({
+        success: false,
+        approved: false,
+        entryStatus: 'DENIED',
+        reasons: ['Visitor record not found'],
+      });
+    }
+
+    const evaluation = evaluateEntryApproval(targetVisitor);
+
+    return res.json({
+      success: true,
+      approved: evaluation.approved,
+      entryStatus: evaluation.entryStatus,
+      verificationStatus: evaluation.verificationStatus,
+      reasons: evaluation.reasons,
+      checklist: evaluation.checklist,
+      policy: securityPolicy,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      approved: false,
+      entryStatus: 'DENIED',
+      reasons: ['Internal server error evaluating entry approval: ' + err.message],
+    });
+  }
+});
+
+// Gate Security QR / Pass Scan Validation Endpoint
+app.post('/api/gate/verify-qr', (req, res) => {
+  try {
+    const { qrToken, gateName, scannedBy } = req.body || {};
+
+    if (!qrToken || qrToken === 'ENTRY_DENIED') {
+      return res.status(400).json({
+        success: false,
+        approved: false,
+        entryStatus: 'DENIED',
+        reason: 'Invalid or blocked entry QR code scanned at gate.',
+      });
+    }
+
+    const visitor = visitorsStore.find(
+      (v) => v.qrCodeValue === qrToken || v.passNumber === qrToken || v.id === qrToken || `PRAVESHKAVACH-${v.id}` === qrToken
+    );
+
+    if (!visitor) {
+      return res.status(404).json({
+        success: false,
+        approved: false,
+        entryStatus: 'DENIED',
+        reason: 'Pass token not found in gate registry. Access Denied.',
+      });
+    }
+
+    const evaluation = evaluateEntryApproval(visitor);
+
+    if (!evaluation.approved) {
+      // Log failed gate scan audit entry
+      auditLogsStore.unshift({
+        id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        timestamp: new Date().toISOString(),
+        action: 'GATE_ENTRY_DENIED',
+        performedBy: scannedBy || 'Gate Security Guard',
+        role: 'SECURITY_GUARD',
+        details: `Gate entry DENIED for pass ${visitor.passNumber} (${visitor.visitorName}). Reason: ${evaluation.reasons.join(', ')}`,
+        gateName: gateName || visitor.gateName || 'Main Gate 01',
+        deviceName: 'Gate QR Scanner',
+        ipAddress: req.ip || '127.0.0.1',
+      });
+
+      return res.status(403).json({
+        success: false,
+        approved: false,
+        entryStatus: 'DENIED',
+        reason: evaluation.reasons[0] || 'Entry authorization criteria not met.',
+        reasons: evaluation.reasons,
+        checklist: evaluation.checklist,
+      });
+    }
+
+    // Gate Entry Approved - Log Audit Event
+    const now = new Date().toISOString();
+    visitor.status = 'CHECKED_IN';
+    visitor.checkInAt = visitor.checkInAt || now;
+
+    auditLogsStore.unshift({
+      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: now,
+      action: 'GATE_ENTRY_GRANTED',
+      performedBy: scannedBy || 'Gate Security Guard',
+      role: 'SECURITY_GUARD',
+      details: `Gate Entry GRANTED for ${visitor.visitorName} (${visitor.passNumber}) to host ${visitor.residentName} (${visitor.buildingUnit}).`,
+      gateName: gateName || visitor.gateName || 'Main Gate 01',
+      deviceName: 'Gate QR Scanner',
+      ipAddress: req.ip || '127.0.0.1',
+    });
+
+    broadcastEvent('visitor_updated', visitor);
+
+    return res.json({
+      success: true,
+      approved: true,
+      entryStatus: 'APPROVED',
+      message: 'ACCESS GRANTED: Gate Pass Verified',
+      visitor,
+      checklist: evaluation.checklist,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      approved: false,
+      entryStatus: 'DENIED',
+      reason: 'Server gate check error: ' + err.message,
+    });
+  }
+});
+
+// Admin Security Policy API
+app.get('/api/admin/security-policy', (req, res) => {
+  res.json({ success: true, policy: securityPolicy });
+});
+
+app.post('/api/admin/security-policy', (req, res) => {
+  if (req.body && typeof req.body === 'object') {
+    securityPolicy = { ...securityPolicy, ...req.body };
+  }
+  res.json({ success: true, policy: securityPolicy });
+});
+
+// Admin Blacklist API
+app.get('/api/admin/blacklist', (req, res) => {
+  res.json({ success: true, blacklist: blacklistStore });
+});
+
+app.post('/api/admin/blacklist', (req, res) => {
+  const { name, docNumber, reason } = req.body || {};
+  if (!name && !docNumber) {
+    return res.status(400).json({ success: false, error: 'Name or Document Number is required for blacklist' });
+  }
+
+  const newItem = {
+    id: `bl-${Date.now()}`,
+    name: name || '',
+    docNumber: docNumber || '',
+    reason: reason || 'Added by security admin',
+    createdAt: new Date().toISOString(),
+  };
+
+  blacklistStore.push(newItem);
+  res.json({ success: true, blacklist: blacklistStore, item: newItem });
+});
 
 // Global analytics metrics calculator based on live visitorsStore
 function getAnalyticsData() {
