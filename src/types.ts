@@ -119,7 +119,6 @@ export interface ExtractedDocData {
   expiryDate?: string;
   nationality?: string;
   documentType: DocumentType;
-  rawText?: string;
   confidenceScore: number; // 0 - 100
   lowConfidenceFields: string[];
   
@@ -135,12 +134,6 @@ export interface ExtractedDocData {
   // Specific parsed fields for each document type
   age?: string;
   state?: string;
-  district?: string;
-  village?: string;
-  town?: string;
-  yearOfBirth?: string;
-  portraitDetected?: boolean;
-  developerLogs?: any;
   qrCodeData?: string;
   aadhaarVersion?: string;
   uidaiInfo?: string;

@@ -283,18 +283,14 @@ export const Step5CaptureFace: React.FC<Step5CaptureFaceProps> = ({
               </div>
             </div>
 
-            {/* Match Banner & Privacy Security Notice */}
-            <div className={`p-3.5 rounded-xl border text-center space-y-1.5 ${isFaceQualityValid ? 'bg-emerald-950/50 border-emerald-500/30' : 'bg-slate-950 border-slate-800'}`}>
+            {/* Match Banner */}
+            <div className={`p-3.5 rounded-xl border text-center space-y-1 ${isFaceQualityValid ? 'bg-emerald-950/50 border-emerald-500/30' : 'bg-slate-950 border-slate-800'}`}>
               <p className={`text-xs font-bold ${isFaceQualityValid ? 'text-emerald-300' : 'text-slate-400'}`}>
                 {isFaceQualityValid ? 'Face Quality Check Passed ✓' : 'Position Face in Center'}
               </p>
               <p className="text-[11px] text-slate-300">
                 Click CAPTURE PHOTO below to manually take face photograph.
               </p>
-              <div className="pt-1.5 border-t border-slate-800 text-[10px] text-slate-400 flex items-center justify-center gap-1.5 font-medium">
-                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <span>Security Policy Notice: Photo capture is for document quality check only. Automated biometric face matching for entry decisions is explicitly disabled.</span>
-              </div>
             </div>
           </div>
 

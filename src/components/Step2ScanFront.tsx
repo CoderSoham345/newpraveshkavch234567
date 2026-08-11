@@ -7,14 +7,12 @@ import {
   QrCode,
   Scan,
   ShieldAlert,
-  Lock,
-  SlidersHorizontal
+  Lock
 } from 'lucide-react';
 import { DocumentType, AadhaarPrivacySettings } from '../types';
 import { DocumentScannerCanvas } from './DocumentScannerCanvas';
 import { AadhaarPrivacyModal } from './AadhaarPrivacyModal';
 import { getDocumentPrivacyConfig } from '../utils/documentPrivacyConfig';
-import { AdobeScanEditor, ScannedPageItem } from './AdobeScanEditor';
 
 interface Step2ScanFrontProps {
   selectedDocType: DocumentType;
@@ -36,8 +34,6 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [detectedQrCode, setDetectedQrCode] = useState<string | null>(null);
   const [showPrivacyModal, setShowPrivacyModal] = useState<boolean>(false);
-  const [scannedPages, setScannedPages] = useState<ScannedPageItem[]>([]);
-  const [isEditingInAdobeScan, setIsEditingInAdobeScan] = useState<boolean>(false);
 
   // Supported document types - All 20+ types for comprehensive document support
   const supportedDocTypes: DocumentType[] = [
@@ -92,24 +88,16 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
     return labels[type] || type;
   };
 
-  const handleCanvasCaptured = (
-    croppedDataUrl: string, 
-    qrCodeData?: string | null,
-    validation?: any,
-    ocrData?: any
-  ) => {
+  const handleCanvasCaptured = (croppedDataUrl: string, qrCodeData?: string | null) => {
     setCapturedImage(croppedDataUrl);
     if (qrCodeData) {
       setDetectedQrCode(qrCodeData);
     }
-    // Automatically proceed directly with the validated cropped image and extracted OCR data
-    onCaptureCompleted(croppedDataUrl, false, ocrData);
   };
 
   const handleConfirmCapturedImage = () => {
-    const finalImg = scannedPages[0]?.processedImage || capturedImage;
-    if (finalImg) {
-      onCaptureCompleted(finalImg);
+    if (capturedImage) {
+      onCaptureCompleted(capturedImage);
     }
   };
 
@@ -132,7 +120,7 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
             <span>SCAN DOCUMENT - FRONT SIDE</span>
           </h2>
           <p className="text-xs text-slate-400">
-            Scan any government-issued ID document. 20+ document types supported with automatic edge detection and Adobe Scan editor.
+            Scan any government-issued ID document. 20+ document types supported with automatic detection. Capture button will activate once document is detected.
           </p>
         </div>
 
@@ -145,106 +133,111 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
       </div>
 
       {/* Controls Bar: ID Type Selector & Aadhaar Privacy Toggle */}
-      {!isEditingInAdobeScan && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
-          
-          {/* Document Type Dropdown */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
-              SUPPORTED DOCUMENT TYPE
-            </label>
-            <select
-              value={selectedDocType}
-              onChange={(e) => {
-                const newType = e.target.value as DocumentType;
-                setSelectedDocType(newType);
-                setShowPrivacyModal(true);
-              }}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-semibold focus:border-cyan-400 focus:outline-none"
-              id="select-doc-type-front"
-            >
-              {supportedDocTypes.map((type) => (
-                <option key={type} value={type}>
-                  {getDocumentLabel(type)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Privacy Setting Indicator & Trigger */}
-          <div className="flex items-center justify-between bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2">
-            <div className="flex items-center gap-2">
-              <Lock className="w-4 h-4 text-cyan-400" />
-              <div>
-                <span className="text-xs font-bold text-white block">
-                  {aadhaarSettings.useMaskedAadhaar
-                    ? `Masked ${getDocumentPrivacyConfig(selectedDocType).displayName} Active`
-                    : `Full ${getDocumentPrivacyConfig(selectedDocType).displayName} Mode`}
-                </span>
-                <span className="text-[10px] text-slate-400 font-mono">
-                  {aadhaarSettings.useMaskedAadhaar
-                    ? getDocumentPrivacyConfig(selectedDocType).maskedPreviewExample
-                    : getDocumentPrivacyConfig(selectedDocType).fullPreviewExample}
-                </span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowPrivacyModal(true)}
-              className="px-2.5 py-1 rounded bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-[10px] font-extrabold uppercase transition-colors cursor-pointer"
-            >
-              Edit Privacy
-            </button>
-          </div>
-
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
+        
+        {/* Document Type Dropdown */}
+        <div>
+          <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+            SUPPORTED DOCUMENT TYPE
+          </label>
+          <select
+            value={selectedDocType}
+            onChange={(e) => {
+              const newType = e.target.value as DocumentType;
+              setSelectedDocType(newType);
+              setShowPrivacyModal(true);
+            }}
+            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-semibold focus:border-cyan-400 focus:outline-none"
+            id="select-doc-type-front"
+          >
+            {supportedDocTypes.map((type) => (
+              <option key={type} value={type}>
+                {getDocumentLabel(type)}
+              </option>
+            ))}
+          </select>
         </div>
-      )}
 
-      {/* Live Automatic Document Edge Detection & Capture Canvas OR Adobe Scan Editor */}
-      {isEditingInAdobeScan && scannedPages.length > 0 ? (
-        <AdobeScanEditor
-          pages={scannedPages}
-          onUpdatePages={(updated) => setScannedPages(updated)}
-          onAddPage={() => {
-            setIsEditingInAdobeScan(false);
-            setCapturedImage(null);
-          }}
-          onRetakeAll={() => {
-            setIsEditingInAdobeScan(false);
-            setScannedPages([]);
-            setCapturedImage(null);
-          }}
-          onConfirmScans={(finalPages) => {
-            const finalImg = finalPages[0]?.processedImage || capturedImage;
-            if (finalImg) {
-              onCaptureCompleted(finalImg);
-            }
-          }}
-        />
+        {/* Privacy Setting Indicator & Trigger */}
+        <div className="flex items-center justify-between bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2">
+          <div className="flex items-center gap-2">
+            <Lock className="w-4 h-4 text-cyan-400" />
+            <div>
+              <span className="text-xs font-bold text-white block">
+                {aadhaarSettings.useMaskedAadhaar
+                  ? `Masked ${getDocumentPrivacyConfig(selectedDocType).displayName} Active`
+                  : `Full ${getDocumentPrivacyConfig(selectedDocType).displayName} Mode`}
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">
+                {aadhaarSettings.useMaskedAadhaar
+                  ? getDocumentPrivacyConfig(selectedDocType).maskedPreviewExample
+                  : getDocumentPrivacyConfig(selectedDocType).fullPreviewExample}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowPrivacyModal(true)}
+            className="px-2.5 py-1 rounded bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-[10px] font-extrabold uppercase transition-colors cursor-pointer"
+          >
+            Edit Privacy
+          </button>
+        </div>
+
+      </div>
+
+      {/* Live OpenCV Document Scanner Viewport or Captured Preview */}
+      {capturedImage ? (
+        <div className="relative rounded-2xl bg-black border border-emerald-500/40 overflow-hidden shadow-2xl aspect-[16/10] sm:aspect-[16/9] flex flex-col items-center justify-center p-4">
+          <img
+            src={capturedImage}
+            alt="Cropped Front Document"
+            className="w-full h-full object-contain rounded-lg"
+          />
+          <div className="absolute top-4 left-4 bg-emerald-950/80 border border-emerald-500 text-emerald-300 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-2 backdrop-blur-md">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>Cropped & Perspective Transformed</span>
+          </div>
+
+          {detectedQrCode && (
+            <div className="absolute bottom-4 left-4 bg-cyan-950/80 border border-cyan-500 text-cyan-300 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-2 backdrop-blur-md">
+              <QrCode className="w-4 h-4 text-cyan-400" />
+              <span>QR Data Merged</span>
+            </div>
+          )}
+        </div>
       ) : (
         <DocumentScannerCanvas
           selectedDocType={selectedDocType}
           onCaptured={handleCanvasCaptured}
-          onOpenEditor={(imgUrl) => {
-            const newPage: ScannedPageItem = {
-              id: `page-front-${Date.now()}`,
-              rawImage: imgUrl,
-              processedImage: imgUrl,
-              corners: {
-                topLeft: { x: 50, y: 50 },
-                topRight: { x: 1150, y: 50 },
-                bottomRight: { x: 1150, y: 700 },
-                bottomLeft: { x: 50, y: 700 },
-              },
-              rotation: 0,
-              filter: 'AUTO',
-              docType: selectedDocType,
-            };
-            setScannedPages([newPage]);
-            setIsEditingInAdobeScan(true);
-          }}
         />
+      )}
+
+      {/* Action Buttons */}
+      {capturedImage && (
+        <div className="flex items-center justify-end gap-3 bg-slate-900 p-4 rounded-xl border border-slate-800">
+          <button
+            onClick={() => {
+              setCapturedImage(null);
+              setDetectedQrCode(null);
+            }}
+            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 border border-slate-700"
+            id="btn-retake-front-doc"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>Retake Document</span>
+          </button>
+
+          <button
+            onClick={handleConfirmCapturedImage}
+            className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-1.5"
+            id="btn-confirm-front-doc"
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            <span>Use Document Image</span>
+          </button>
+        </div>
       )}
 
       {/* Document Privacy Selection Modal */}

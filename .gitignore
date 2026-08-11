@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+gradle-*/
+*.zip
+android/app/build.gradle.backup
+android/app/build.gradle.backup
+gradle-8.14.3-bin.zip
