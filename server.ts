@@ -1161,19 +1161,24 @@ app.post('/api/ocr', async (req, res) => {
       try {
         console.log('[v0] Running Pass 1: Gemini Multimodal AI Analysis...');
         const prompt = `You are PraveshKavach™ Enterprise Identity Verification OCR AI.
-Extract structured fields from this government identity card image.
+Extract structured fields and complete raw text from this government identity document image.
 
 Target Document Type Requested: ${docType || 'AUTOMATIC_DETECTION'}
 Requested Side: ${side || 'front'}
 
-CRITICAL OCR & EXTRACTION RULES:
-1. Extract ALL visible text fields with maximum precision.
-2. Preserve exact character accuracy. Fix common optical confusions (e.g. 0 vs O, 1 vs I/l, 8 vs B, 5 vs S).
-3. Format all dates (dob, issueDate, expiryDate) strictly as DD/MM/YYYY.
-4. Extract fatherName/husbandName/guardianName if present on card.
+CRITICAL STAGE 1: RAW OCR TEXT STREAM
+Extract ALL visible text from top to bottom into rawText. Do not truncate, omit, or summarize. Include both English and Hindi/Regional text.
+
+CRITICAL STAGE 2: NAME & FIELD EXTRACTION
+1. Identify the PRIMARY CARDHOLDER / APPLICANT'S FULL NAME (fullName):
+   - Look for labels like "Name", "नाम", or main name line.
+   - DO NOT confuse father's name, husband's name, mother's name, or officer/issuing authority names with the cardholder's fullName.
+   - Return English name (and Hindi name if present).
+2. Extract Father's / Husband's / Guardian's Name separately into fatherName.
+3. Extract Document Number (documentNumber) without spaces or hyphens.
+4. Format all dates (dob, issueDate, expiryDate) strictly as DD/MM/YYYY.
 5. Extract complete address and 6-digit PIN code if present.
-6. Return empty string "" for any field not present on the card - NEVER invent or hallucinate missing data.
-7. Return strict JSON payload.`;
+6. Return empty string "" for any missing field - NEVER invent or hallucinate missing data.`;
 
         const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
         let geminiRespText: string | null = null;
@@ -1194,6 +1199,7 @@ CRITICAL OCR & EXTRACTION RULES:
                   type: Type.OBJECT,
                   properties: {
                     documentType: { type: Type.STRING },
+                    rawText: { type: Type.STRING },
                     fullName: { type: Type.STRING },
                     documentNumber: { type: Type.STRING },
                     dob: { type: Type.STRING },
@@ -1311,7 +1317,7 @@ CRITICAL OCR & EXTRACTION RULES:
       bloodGroup: geminiParsedData?.bloodGroup || ruleBasedResult.extractedData.bloodGroup || '',
       vehicleCategories: geminiParsedData?.vehicleCategories || ruleBasedResult.extractedData.vehicleCategories || '',
       mrzCode: geminiParsedData?.mrzCode || ruleBasedResult.extractedData.mrzCode || '',
-      rawText: rawOCRText || (geminiParsedData ? `DOCUMENT TYPE: ${finalTargetType}\nNAME: ${extractedFullName}\nDOC NO: ${extractedDocNum}\nDOB: ${geminiParsedData.dob || ''}\nGENDER: ${geminiParsedData.gender || ''}\nFATHER NAME: ${geminiParsedData.fatherName || ''}\nADDRESS: ${geminiParsedData.address || ''}\nPIN CODE: ${geminiParsedData.pinCode || ''}` : ''),
+      rawText: geminiParsedData?.rawText || rawOCRText || (geminiParsedData ? `DOCUMENT TYPE: ${finalTargetType}\nNAME: ${extractedFullName}\nDOC NO: ${extractedDocNum}\nDOB: ${geminiParsedData.dob || ''}\nGENDER: ${geminiParsedData.gender || ''}\nFATHER NAME: ${geminiParsedData.fatherName || ''}\nADDRESS: ${geminiParsedData.address || ''}\nPIN CODE: ${geminiParsedData.pinCode || ''}` : ''),
       confidenceScore: calculatedConfidence,
       lowConfidenceFields: lowFields,
     };

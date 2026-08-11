@@ -257,7 +257,7 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
                 <span className="text-emerald-400">Exact OCR Input</span>
               </div>
               <pre className="whitespace-pre-wrap break-words leading-relaxed">
-{validatedData.documentType === 'PAN_CARD' ? `INCOME TAX DEPARTMENT
+{extractedData.rawText || validatedData.rawText || (validatedData.documentType === 'PAN_CARD' ? `INCOME TAX DEPARTMENT
 GOVT OF INDIA
 PERMANENT ACCOUNT NUMBER CARD
 NAME: ${validatedData.fullName || 'Not Detected'}
@@ -284,7 +284,7 @@ GENDER: ${validatedData.gender || 'Not Detected'}`
 : `DOCUMENT TYPE: ${validatedData.documentType}
 NAME: ${validatedData.fullName || 'Not Detected'}
 DOCUMENT NO: ${validatedData.documentNumber || 'Not Detected'}
-DOB: ${validatedData.dob || 'Not Detected'}`}
+DOB: ${validatedData.dob || 'Not Detected'}`)}
               </pre>
             </div>
           )}

@@ -18,7 +18,7 @@ import {
   CheckCircle2,
   Image as ImageIcon
 } from 'lucide-react';
-import { QuadCorners, Point, cropAndStraightenDocument, isOpenCVReady } from '../utils/cvEngine';
+import { QuadCorners, Point, cropAndStraightenDocument, applyImageFiltersAndAdjustments, FilterAdjustmentOptions } from '../utils/cvEngine';
 import { DocumentType } from '../types';
 
 export interface ScannedPageItem {
@@ -27,7 +27,10 @@ export interface ScannedPageItem {
   processedImage: string; // Base64 of cropped + filtered result
   corners: QuadCorners;
   rotation: number; // 0, 90, 180, 270
-  filter: 'AUTO' | 'ORIGINAL' | 'ENHANCED' | 'GRAYSCALE' | 'BW';
+  filter: 'AUTO' | 'ORIGINAL' | 'ENHANCED' | 'DOCUMENT' | 'GRAYSCALE' | 'BW' | 'SHARP' | 'HIGH_CONTRAST';
+  brightness?: number; // -100 to +100
+  contrast?: number;   // -100 to +100
+  sharpness?: number;  // 0 to 100
   docType?: DocumentType;
 }
 
@@ -60,6 +63,22 @@ export const AdobeScanEditor: React.FC<AdobeScanEditorProps> = ({
 
   // Tab State: 'crop' | 'filters' | 'rotate'
   const [activeTab, setActiveTab] = useState<'crop' | 'filters' | 'rotate'>('crop');
+
+  // Filter & Adjustment Sliders State
+  const [selectedFilter, setSelectedFilter] = useState<'AUTO' | 'ORIGINAL' | 'ENHANCED' | 'DOCUMENT' | 'GRAYSCALE' | 'BW' | 'SHARP' | 'HIGH_CONTRAST'>(activePage?.filter || 'AUTO');
+  const [brightness, setBrightness] = useState<number>(activePage?.brightness || 0);
+  const [contrast, setContrast] = useState<number>(activePage?.contrast || 0);
+  const [sharpness, setSharpness] = useState<number>(activePage?.sharpness || 0);
+
+  // Sync state when page changes
+  useEffect(() => {
+    if (activePage) {
+      setSelectedFilter(activePage.filter || 'AUTO');
+      setBrightness(activePage.brightness || 0);
+      setContrast(activePage.contrast || 0);
+      setSharpness(activePage.sharpness || 0);
+    }
+  }, [currentPageIndex, activePage?.id]);
 
   // Load active page image
   useEffect(() => {
@@ -409,9 +428,15 @@ export const AdobeScanEditor: React.FC<AdobeScanEditorProps> = ({
     }
   };
 
-  // Apply Filter
-  const handleApplyFilter = (filterType: 'AUTO' | 'ORIGINAL' | 'ENHANCED' | 'GRAYSCALE' | 'BW') => {
-    if (!imgElement || !corners) return;
+  // Reprocess Current Page Image Pixels
+  const reprocessCurrentPage = async (
+    targetFilter = selectedFilter,
+    targetB = brightness,
+    targetC = contrast,
+    targetS = sharpness,
+    targetCorners = corners
+  ) => {
+    if (!imgElement || !targetCorners) return;
 
     const sourceCanvas = document.createElement('canvas');
     sourceCanvas.width = imgElement.naturalWidth;
@@ -420,57 +445,41 @@ export const AdobeScanEditor: React.FC<AdobeScanEditorProps> = ({
     if (!ctx) return;
     ctx.drawImage(imgElement, 0, 0);
 
-    let baseCropped = cropAndStraightenDocument(sourceCanvas, corners);
+    const baseCropped = cropAndStraightenDocument(sourceCanvas, targetCorners);
 
-    if (filterType === 'GRAYSCALE' || filterType === 'BW') {
-      const filterImg = new Image();
-      filterImg.onload = () => {
-        const filterCanvas = document.createElement('canvas');
-        filterCanvas.width = filterImg.width;
-        filterCanvas.height = filterImg.height;
-        const fCtx = filterCanvas.getContext('2d');
-        if (fCtx) {
-          fCtx.drawImage(filterImg, 0, 0);
-          const imgData = fCtx.getImageData(0, 0, filterCanvas.width, filterCanvas.height);
-          const d = imgData.data;
-
-          for (let i = 0; i < d.length; i += 4) {
-            const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-            if (filterType === 'GRAYSCALE') {
-              d[i] = gray;
-              d[i + 1] = gray;
-              d[i + 2] = gray;
-            } else {
-              // High contrast Black & White
-              const val = gray > 128 ? 255 : 0;
-              d[i] = val;
-              d[i + 1] = val;
-              d[i + 2] = val;
-            }
-          }
-          fCtx.putImageData(imgData, 0, 0);
-          baseCropped = filterCanvas.toDataURL('image/jpeg', 0.95);
-
-          const updatedPages = [...pages];
-          updatedPages[currentPageIndex] = {
-            ...activePage,
-            filter: filterType,
-            processedImage: baseCropped,
-          };
-          onUpdatePages(updatedPages);
-        }
-      };
-      filterImg.src = baseCropped;
-      return;
-    }
+    const finalProcessed = await applyImageFiltersAndAdjustments(baseCropped, {
+      filter: targetFilter,
+      brightness: targetB,
+      contrast: targetC,
+      sharpness: targetS,
+    });
 
     const updatedPages = [...pages];
     updatedPages[currentPageIndex] = {
       ...activePage,
-      filter: filterType,
-      processedImage: baseCropped,
+      corners: targetCorners,
+      filter: targetFilter,
+      brightness: targetB,
+      contrast: targetC,
+      sharpness: targetS,
+      processedImage: finalProcessed,
     };
     onUpdatePages(updatedPages);
+  };
+
+  // Preset Filter Selection
+  const handleApplyFilterPreset = (filterType: 'AUTO' | 'ORIGINAL' | 'ENHANCED' | 'DOCUMENT' | 'GRAYSCALE' | 'BW' | 'SHARP' | 'HIGH_CONTRAST') => {
+    setSelectedFilter(filterType);
+    reprocessCurrentPage(filterType, brightness, contrast, sharpness);
+  };
+
+  // Reset All Adjustments
+  const handleResetAdjustments = () => {
+    setSelectedFilter('ORIGINAL');
+    setBrightness(0);
+    setContrast(0);
+    setSharpness(0);
+    reprocessCurrentPage('ORIGINAL', 0, 0, 0);
   };
 
   // Delete Current Page
@@ -643,29 +652,108 @@ export const AdobeScanEditor: React.FC<AdobeScanEditorProps> = ({
 
       </div>
 
-      {/* Filter Options Drawer */}
+      {/* Filter Options & Sliders Drawer */}
       {activeTab === 'filters' && (
-        <div className="bg-slate-950 p-3 border-t border-slate-800 flex items-center justify-center gap-2 overflow-x-auto">
-          {[
-            { id: 'AUTO', label: 'Auto Magic' },
-            { id: 'ORIGINAL', label: 'Original' },
-            { id: 'ENHANCED', label: 'Enhanced' },
-            { id: 'GRAYSCALE', label: 'Grayscale' },
-            { id: 'BW', label: 'B&W Text' },
-          ].map((f) => (
+        <div className="bg-slate-950 p-3.5 border-t border-slate-800 space-y-3 animate-fade-in max-h-[220px] overflow-y-auto">
+          {/* Preset Buttons */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {[
+              { id: 'AUTO', label: '✨ Auto Magic' },
+              { id: 'ORIGINAL', label: 'Original' },
+              { id: 'ENHANCED', label: 'Enhanced' },
+              { id: 'DOCUMENT', label: 'Document' },
+              { id: 'GRAYSCALE', label: 'Grayscale' },
+              { id: 'BW', label: 'B&W Text' },
+              { id: 'SHARP', label: 'Sharp Text' },
+              { id: 'HIGH_CONTRAST', label: 'High Contrast' },
+            ].map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => handleApplyFilterPreset(f.id as any)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all whitespace-nowrap cursor-pointer ${
+                  selectedFilter === f.id
+                    ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-extrabold shadow-md scale-105'
+                    : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+
             <button
-              key={f.id}
               type="button"
-              onClick={() => handleApplyFilter(f.id as any)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all whitespace-nowrap ${
-                activePage.filter === f.id
-                  ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-extrabold shadow-md'
-                  : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
-              }`}
+              onClick={handleResetAdjustments}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-600/50 flex items-center gap-1 cursor-pointer shrink-0"
+              title="Reset Filter & Adjustments"
             >
-              {f.label}
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>RESET</span>
             </button>
-          ))}
+          </div>
+
+          {/* Sliders: Brightness, Contrast, Sharpness */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+            {/* Brightness Slider */}
+            <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800 space-y-1">
+              <div className="flex justify-between text-[10px] font-bold text-slate-300">
+                <span>Brightness</span>
+                <span className="text-cyan-400 font-mono">{brightness > 0 ? `+${brightness}` : brightness}</span>
+              </div>
+              <input
+                type="range"
+                min="-100"
+                max="100"
+                value={brightness}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setBrightness(val);
+                  reprocessCurrentPage(selectedFilter, val, contrast, sharpness);
+                }}
+                className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+              />
+            </div>
+
+            {/* Contrast Slider */}
+            <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800 space-y-1">
+              <div className="flex justify-between text-[10px] font-bold text-slate-300">
+                <span>Contrast</span>
+                <span className="text-cyan-400 font-mono">{contrast > 0 ? `+${contrast}` : contrast}</span>
+              </div>
+              <input
+                type="range"
+                min="-100"
+                max="100"
+                value={contrast}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setContrast(val);
+                  reprocessCurrentPage(selectedFilter, brightness, val, sharpness);
+                }}
+                className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+              />
+            </div>
+
+            {/* Sharpness Slider */}
+            <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800 space-y-1">
+              <div className="flex justify-between text-[10px] font-bold text-slate-300">
+                <span>Sharpness</span>
+                <span className="text-cyan-400 font-mono">{sharpness}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={sharpness}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setSharpness(val);
+                  reprocessCurrentPage(selectedFilter, brightness, contrast, val);
+                }}
+                className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+              />
+            </div>
+          </div>
         </div>
       )}
 
