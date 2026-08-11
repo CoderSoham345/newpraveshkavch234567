@@ -159,6 +159,31 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Aadhaar Scan Quality & Image Processing Badges */}
+            <div className="pt-1 space-y-1.5 border-t border-slate-800/80">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block">
+                IMAGE PROCESSING & QUALITY PIPELINE
+              </span>
+              <div className="grid grid-cols-2 gap-1.5 text-[10px] font-semibold text-slate-300">
+                <div className="flex items-center gap-1 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Card Detected & Cropped</span>
+                </div>
+                <div className="flex items-center gap-1 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Perspective Corrected</span>
+                </div>
+                <div className="flex items-center gap-1 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Real Pixel Enhanced</span>
+                </div>
+                <div className="flex items-center gap-1 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span>Portrait Preserved</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Next Step Banner */}

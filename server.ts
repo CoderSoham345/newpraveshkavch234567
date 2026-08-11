@@ -1167,18 +1167,20 @@ Target Document Type Requested: ${docType || 'AUTOMATIC_DETECTION'}
 Requested Side: ${side || 'front'}
 
 CRITICAL STAGE 1: RAW OCR TEXT STREAM
-Extract ALL visible text from top to bottom into rawText. Do not truncate, omit, or summarize. Include both English and Hindi/Regional text.
+Extract ALL visible text from top to bottom into rawText. Do not truncate, omit, or summarize. Include both English and Hindi/Regional text verbatim.
 
-CRITICAL STAGE 2: NAME & FIELD EXTRACTION
-1. Identify the PRIMARY CARDHOLDER / APPLICANT'S FULL NAME (fullName):
-   - Look for labels like "Name", "नाम", or main name line.
-   - DO NOT confuse father's name, husband's name, mother's name, or officer/issuing authority names with the cardholder's fullName.
-   - Return English name (and Hindi name if present).
-2. Extract Father's / Husband's / Guardian's Name separately into fatherName.
-3. Extract Document Number (documentNumber) without spaces or hyphens.
-4. Format all dates (dob, issueDate, expiryDate) strictly as DD/MM/YYYY.
-5. Extract complete address and 6-digit PIN code if present.
-6. Return empty string "" for any missing field - NEVER invent or hallucinate missing data.`;
+CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
+1. Identify PRIMARY CARDHOLDER FULL NAME (fullName):
+   - Locate the main cardholder's name printed in English and Hindi.
+   - DO NOT confuse father's name (S/O, D/O, W/O), mother's name, or officer/government header text with fullName.
+2. Identify RELATIONSHIP / FATHER'S / SPOUSE NAME (fatherName):
+   - Look for "S/O", "D/O", "W/O", "C/O", "Father:", "Husband:".
+3. Extract DOB (dob) in DD/MM/YYYY or YEAR OF BIRTH (yearOfBirth) in YYYY if only year is visible.
+4. Extract GENDER (gender): "Male", "Female", or "Transgender".
+5. Extract AADHAAR / ID NUMBER (documentNumber): 12 digits (e.g. 1234 5678 9012) or 12-digit masked format.
+6. Extract MULTILINE ADDRESS (address), DISTRICT (district), STATE (state), and 6-digit PIN CODE (pinCode).
+7. PORTRAIT DETECTION (portraitDetected): Set to true if a printed photo/portrait of the individual is present on the card.
+8. Return empty string "" or null for any field not present on the card - NEVER invent or hallucinate data.`;
 
         const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
         let geminiRespText: string | null = null;
@@ -1203,10 +1205,14 @@ CRITICAL STAGE 2: NAME & FIELD EXTRACTION
                     fullName: { type: Type.STRING },
                     documentNumber: { type: Type.STRING },
                     dob: { type: Type.STRING },
+                    yearOfBirth: { type: Type.STRING },
                     gender: { type: Type.STRING },
                     fatherName: { type: Type.STRING },
                     address: { type: Type.STRING },
+                    district: { type: Type.STRING },
+                    state: { type: Type.STRING },
                     pinCode: { type: Type.STRING },
+                    portraitDetected: { type: Type.BOOLEAN },
                     issueDate: { type: Type.STRING },
                     expiryDate: { type: Type.STRING },
                     nationality: { type: Type.STRING },
@@ -1303,9 +1309,13 @@ CRITICAL STAGE 2: NAME & FIELD EXTRACTION
       documentType: finalTargetType,
       dob: normalizeDate(geminiParsedData?.dob || ruleBasedResult.extractedData.dob).formattedDate,
       gender: geminiParsedData?.gender || ruleBasedResult.extractedData.gender || '',
+      yearOfBirth: geminiParsedData?.yearOfBirth || ruleBasedResult.extractedData.yearOfBirth || '',
       fatherName: geminiParsedData?.fatherName || ruleBasedResult.extractedData.fatherName || '',
       address: geminiParsedData?.address || ruleBasedResult.extractedData.address || '',
+      district: geminiParsedData?.district || ruleBasedResult.extractedData.district || '',
+      state: geminiParsedData?.state || ruleBasedResult.extractedData.state || '',
       pinCode: geminiParsedData?.pinCode || ruleBasedResult.extractedData.pinCode || '',
+      portraitDetected: geminiParsedData?.portraitDetected ?? ruleBasedResult.extractedData.portraitDetected ?? true,
       issueDate: normalizeDate(geminiParsedData?.issueDate || ruleBasedResult.extractedData.issueDate).formattedDate,
       expiryDate: normalizeDate(geminiParsedData?.expiryDate || ruleBasedResult.extractedData.expiryDate).formattedDate,
       nationality: geminiParsedData?.nationality || ruleBasedResult.extractedData.nationality || 'INDIAN',
@@ -1461,54 +1471,130 @@ function extractDocumentFields(text: string, documentType: string): any {
   }
 
   // AADHAAR EXTRACTION
-  if (documentType.includes('AADHAAR')) {
+  if (documentType.includes('AADHAAR') || upper.includes('AADHAAR') || upper.includes('UNIQUE IDENTIFICATION')) {
     data.photoPresent = true;
+    data.portraitDetected = true;
 
-    // Aadhaar Number
+    // Aadhaar Number (12 digits or masked)
     const aadhaarMatch = text.match(/\b(\d{4})[\s-]?(\d{4})[\s-]?(\d{4})\b/);
     if (aadhaarMatch) {
       data.documentNumber = `${aadhaarMatch[1]} ${aadhaarMatch[2]} ${aadhaarMatch[3]}`;
+    } else {
+      const maskedMatch = text.match(/\b([X\*\d]{4})[\s-]?([X\*\d]{4})[\s-]?(\d{4})\b/i);
+      if (maskedMatch) {
+        data.documentNumber = `XXXX XXXX ${maskedMatch[3]}`;
+        data.isMaskedAadhaar = true;
+      }
     }
 
     // Gender
-    if (/\bMALE\b/i.test(text)) data.gender = 'Male';
-    else if (/\bFEMALE\b/i.test(text)) data.gender = 'Female';
+    if (/\bFEMALE\b/i.test(text) || /\bमहिला\b/.test(text)) data.gender = 'Female';
+    else if (/\bMALE\b/i.test(text) || /\bपुरुष\b/.test(text)) data.gender = 'Male';
+    else if (/\bTRANSGENDER\b/i.test(text)) data.gender = 'Transgender';
 
-    // DOB
-    const dobMatch = text.match(/(?:DOB|Date of Birth|Birth)\s*[:\.-]?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i) ||
+    // DOB / YOB
+    const dobMatch = text.match(/(?:DOB|Date of Birth|Birth|जन्म तिथि)\s*[:\.-]?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i) ||
                      text.match(/\b(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})\b/);
     if (dobMatch) {
       data.dob = dobMatch[1].replace(/[\.-]/g, '/');
       data.dateOfBirth = data.dob;
-
-      // Calculate Age
       const year = parseInt(data.dob.split('/')[2], 10);
       if (year > 1900 && year <= new Date().getFullYear()) {
         data.age = `${new Date().getFullYear() - year} Years`;
+        data.yearOfBirth = `${year}`;
       }
     } else {
-      const yearMatch = text.match(/(?:Year of Birth|YOB)\s*[:\.-]?\s*(\d{4})/i);
+      const yearMatch = text.match(/(?:Year of Birth|YOB|जन्म वर्ष)\s*[:\.-]?\s*(\d{4})/i);
       if (yearMatch) {
-        data.dob = yearMatch[1];
-        data.dateOfBirth = yearMatch[1];
+        data.yearOfBirth = yearMatch[1];
         data.age = `${new Date().getFullYear() - parseInt(yearMatch[1], 10)} Years`;
       }
     }
 
-    // Address & PIN
+    // Address & PIN Code
     const pinMatch = text.match(/\b(\d{6})\b/);
     if (pinMatch) {
       data.pinCode = pinMatch[1];
     }
 
-    // Name extraction
-    lines.forEach(line => {
+    // Multiline Address
+    const addressMatch = text.match(/(?:Address|पता)\s*[:\.-]?\s*([\s\S]{10,250}?)(?=\b\d{6}\b|Aadhaar|UIDAI|$)/i);
+    if (addressMatch) {
+      let rawAddr = addressMatch[1]
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 0 && !l.toUpperCase().includes('UNIQUE') && !l.toUpperCase().includes('GOVT'))
+        .join(', ');
+      if (pinMatch && !rawAddr.includes(pinMatch[1])) {
+        rawAddr += `, ${pinMatch[1]}`;
+      }
+      data.address = rawAddr;
+    }
+
+    // Name & Father/Spouse Candidate Scoring
+    const nameCandidates: { text: string; score: number; reason: string }[] = [];
+
+    lines.forEach((line, idx) => {
       const u = line.toUpperCase();
-      if (!data.fullName && !u.includes('GOVT') && !u.includes('INDIA') && !u.includes('AADHAAR') && !u.includes('UIDAI') && /^[A-Z\s]{3,40}$/i.test(line)) {
-        data.fullName = line;
-        data.name = line;
+      // Skip header lines and system tokens
+      if (
+        u.includes('GOVT') ||
+        u.includes('GOVERNMENT') ||
+        u.includes('INDIA') ||
+        u.includes('AADHAAR') ||
+        u.includes('ADHAR') ||
+        u.includes('UIDAI') ||
+        u.includes('UNIQUE') ||
+        u.includes('IDENTIFICATION') ||
+        u.includes('AUTHORITY') ||
+        u.includes('ENROLMENT') ||
+        u.includes('HELP') ||
+        u.includes('WWW.') ||
+        u.includes('MALE') ||
+        u.includes('FEMALE') ||
+        u.includes('ADDRESS') ||
+        u.includes('DOB') ||
+        u.includes('BIRTH') ||
+        /\d{4}/.test(line)
+      ) {
+        return;
+      }
+
+      // Check for S/O, D/O, W/O, C/O relationship lines
+      const relMatch = line.match(/(?:S\/O|D\/O|W\/O|C\/O|Father|Husband|आत्मज|पति|पिता)\s*[:\.-]?\s*([A-Za-z\s\.]+)/i);
+      if (relMatch && relMatch[1].trim().length >= 3) {
+        data.fatherName = relMatch[1].trim();
+        return;
+      }
+
+      // Match pure name candidate lines
+      if (/^[A-Za-z\s\.\'-]{3,45}$/i.test(line)) {
+        let score = 50;
+        let reason = 'Valid name string';
+
+        // Boost score if line is right before DOB or Gender line
+        const nextLine = lines[idx + 1] ? lines[idx + 1].toUpperCase() : '';
+        if (nextLine.includes('DOB') || nextLine.includes('BIRTH') || nextLine.includes('MALE') || nextLine.includes('FEMALE')) {
+          score += 40;
+          reason += ' + Positioned above DOB/Gender';
+        }
+
+        // Boost score if preceded by "To" or "Name"
+        const prevLine = lines[idx - 1] ? lines[idx - 1].toUpperCase() : '';
+        if (prevLine.includes('TO') || prevLine.includes('NAME') || prevLine.includes('नाम')) {
+          score += 35;
+          reason += ' + Follows Name label';
+        }
+
+        nameCandidates.push({ text: line.trim(), score, reason });
       }
     });
+
+    nameCandidates.sort((a, b) => b.score - a.score);
+    if (nameCandidates.length > 0) {
+      data.fullName = nameCandidates[0].text;
+      data.name = nameCandidates[0].text;
+    }
   }
 
   // PASSPORT EXTRACTION
