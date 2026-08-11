@@ -64,6 +64,8 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
   // Captured Image State for Freeze/Retake/Continue Flow
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [capturedQrData, setCapturedQrData] = useState<string | null>(null);
+  const [detectionFailed, setDetectionFailed] = useState<boolean>(false);
+  const highResCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Detection and Validation States
   const [scanResult, setScanResult] = useState<ScanValidationResult | null>(null);
@@ -194,43 +196,82 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
     if (!videoRef.current || isCapturing) return;
     logCamera('Capture frame started');
     setIsCapturing(true);
+    setDetectionFailed(false);
 
     const video = videoRef.current;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
-    const ctx = canvas.getContext('2d');
+    const highResCanvas = document.createElement('canvas');
+    highResCanvas.width = video.videoWidth || 1920;
+    highResCanvas.height = video.videoHeight || 1080;
+    const ctx = highResCanvas.getContext('2d');
 
     const activeResult = resultToCapture || scanResult;
 
     if (ctx) {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, 0, 0, highResCanvas.width, highResCanvas.height);
+      highResCanvasRef.current = highResCanvas;
 
       const qrData: string | null = activeResult?.qrCodeData || null;
-      let croppedDataUrl: string;
 
-      if (activeResult?.quad) {
-        croppedDataUrl = cropAndStraightenDocument(canvas, activeResult.quad.corners);
-      } else {
-        // Construct tight quad matching central scanner frame box (12% margin from edges)
-        const marginX = canvas.width * 0.12;
-        const marginY = canvas.height * 0.18;
-        const fallbackCorners: QuadCorners = {
-          topLeft: { x: marginX, y: marginY },
-          topRight: { x: canvas.width - marginX, y: marginY },
-          bottomRight: { x: canvas.width - marginX, y: canvas.height - marginY },
-          bottomLeft: { x: marginX, y: canvas.height - marginY },
+      // RE-DETECT DOCUMENT ON HIGH-RESOLUTION CAPTURE IMAGE
+      const highResAnalysis = analyzeDocumentFrame(highResCanvas, selectedDocType);
+
+      let finalCorners: QuadCorners | null = null;
+
+      if (highResAnalysis.quadDetected && highResAnalysis.quad) {
+        finalCorners = highResAnalysis.quad.corners;
+      } else if (activeResult?.quad) {
+        // Proportional scale preview corners to high-res dimensions
+        const previewW = canvasRef.current?.width || 1280;
+        const previewH = canvasRef.current?.height || 720;
+        const scaleX = highResCanvas.width / (previewW || 1);
+        const scaleY = highResCanvas.height / (previewH || 1);
+        const c = activeResult.quad.corners;
+        finalCorners = {
+          topLeft: { x: c.topLeft.x * scaleX, y: c.topLeft.y * scaleY },
+          topRight: { x: c.topRight.x * scaleX, y: c.topRight.y * scaleY },
+          bottomRight: { x: c.bottomRight.x * scaleX, y: c.bottomRight.y * scaleY },
+          bottomLeft: { x: c.bottomLeft.x * scaleX, y: c.bottomLeft.y * scaleY },
         };
-        croppedDataUrl = cropAndStraightenDocument(canvas, fallbackCorners);
       }
 
-      logCamera('Frame captured successfully (tight card crop applied)');
-      setCapturedImage(croppedDataUrl);
-      setCapturedQrData(qrData);
-      setCameraState('CAPTURED');
-      handleStopCamera();
+      if (finalCorners) {
+        const croppedDataUrl = cropAndStraightenDocument(highResCanvas, finalCorners);
+        logCamera('Frame captured with high-res auto crop & perspective transform');
+        setCapturedImage(croppedDataUrl);
+        setCapturedQrData(qrData);
+        setCameraState('CAPTURED');
+        handleStopCamera();
+        setIsCapturing(false);
+
+        // AUTO-PROCEED IMMEDIATELY (ZERO MANUAL CROPPING NEEDED)
+        onCaptured(croppedDataUrl, qrData);
+      } else {
+        // AUTOMATIC DETECTION FAILED - SHOW FAILURE FALLBACK
+        logCamera('Document edges could not be detected on high-res capture');
+        setDetectionFailed(true);
+        setCapturedQrData(qrData);
+        setCameraState('CAPTURED');
+        handleStopCamera();
+        setIsCapturing(false);
+      }
+    } else {
+      setIsCapturing(false);
     }
-    setIsCapturing(false);
+  };
+
+  // Fallback: Use full image if automatic detection fails
+  const handleUseFullImageFallback = () => {
+    if (highResCanvasRef.current) {
+      const canvas = highResCanvasRef.current;
+      const fullCorners: QuadCorners = {
+        topLeft: { x: 0, y: 0 },
+        topRight: { x: canvas.width, y: 0 },
+        bottomRight: { x: canvas.width, y: canvas.height },
+        bottomLeft: { x: 0, y: canvas.height },
+      };
+      const enhancedFullUrl = cropAndStraightenDocument(canvas, fullCorners);
+      onCaptured(enhancedFullUrl, capturedQrData);
+    }
   };
 
   // Retake captured photo
@@ -238,6 +279,8 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
     setCapturedImage(null);
     setCapturedQrData(null);
     setScanResult(null);
+    setDetectionFailed(false);
+    highResCanvasRef.current = null;
     steadyFrameCountRef.current = 0;
     setAutoCaptureProgress(0);
     initCamera();
@@ -486,6 +529,48 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
 
   const isReadyToCapture = Boolean(scanResult?.readyToCapture);
   const debug = scanResult?.debugStats;
+
+  // --- FAILURE FALLBACK DISPLAY ---
+  if (cameraState === 'CAPTURED' && detectionFailed) {
+    return (
+      <div className="w-full rounded-2xl bg-slate-950 border border-amber-500/60 p-6 sm:p-8 text-center flex flex-col items-center justify-center space-y-5 shadow-2xl animate-fade-in">
+        <div className="w-16 h-16 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center">
+          <AlertTriangle className="w-8 h-8 animate-pulse" />
+        </div>
+
+        <div className="space-y-1.5 max-w-md">
+          <h3 className="text-base font-bold text-white tracking-wide uppercase">
+            Document Edges Could Not Be Detected
+          </h3>
+          <p className="text-xs text-slate-300 leading-relaxed">
+            The scanner could not locate clear document boundaries. You can retake the scan or proceed using the full camera capture.
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-md pt-2">
+          <button
+            type="button"
+            onClick={handleRetake}
+            className="w-full sm:w-1/2 py-3 px-4 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer"
+            id="btn-retake-scan-fallback"
+          >
+            <RotateCcw className="w-4 h-4 text-amber-400" />
+            <span>Retake Scan</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleUseFullImageFallback}
+            className="w-full sm:w-1/2 py-3 px-4 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-extrabold shadow-lg border border-emerald-400/40 flex items-center justify-center gap-2 transition-all cursor-pointer"
+            id="btn-use-full-image-fallback"
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            <span>Use Full Image</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // --- CAPTURED STATE DISPLAY ---
   if (cameraState === 'CAPTURED' && capturedImage) {
@@ -780,21 +865,27 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
                 const img = new Image();
                 img.onload = () => {
                   const tempCanvas = document.createElement('canvas');
-                  tempCanvas.width = img.naturalWidth || 1280;
-                  tempCanvas.height = img.naturalHeight || 720;
+                  tempCanvas.width = img.naturalWidth || 1920;
+                  tempCanvas.height = img.naturalHeight || 1080;
                   const ctx = tempCanvas.getContext('2d');
                   if (ctx) {
                     ctx.drawImage(img, 0, 0);
-                    const marginX = tempCanvas.width * 0.08;
-                    const marginY = tempCanvas.height * 0.12;
-                    const galleryCorners: QuadCorners = {
-                      topLeft: { x: marginX, y: marginY },
-                      topRight: { x: tempCanvas.width - marginX, y: marginY },
-                      bottomRight: { x: tempCanvas.width - marginX, y: tempCanvas.height - marginY },
-                      bottomLeft: { x: marginX, y: tempCanvas.height - marginY },
-                    };
+                    const galleryAnalysis = analyzeDocumentFrame(tempCanvas, selectedDocType);
+                    let galleryCorners: QuadCorners;
+                    if (galleryAnalysis.quadDetected && galleryAnalysis.quad) {
+                      galleryCorners = galleryAnalysis.quad.corners;
+                    } else {
+                      const marginX = tempCanvas.width * 0.05;
+                      const marginY = tempCanvas.height * 0.05;
+                      galleryCorners = {
+                        topLeft: { x: marginX, y: marginY },
+                        topRight: { x: tempCanvas.width - marginX, y: marginY },
+                        bottomRight: { x: tempCanvas.width - marginX, y: tempCanvas.height - marginY },
+                        bottomLeft: { x: marginX, y: tempCanvas.height - marginY },
+                      };
+                    }
                     const cropped = cropAndStraightenDocument(tempCanvas, galleryCorners);
-                    onCaptured(cropped, null);
+                    onCaptured(cropped, galleryAnalysis.qrCodeData || null);
                   }
                 };
                 img.src = dataUrl;

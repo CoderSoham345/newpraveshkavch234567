@@ -97,24 +97,8 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
     if (qrCodeData) {
       setDetectedQrCode(qrCodeData);
     }
-
-    const newPage: ScannedPageItem = {
-      id: `page-${Date.now()}`,
-      rawImage: croppedDataUrl,
-      processedImage: croppedDataUrl,
-      corners: {
-        topLeft: { x: 50, y: 50 },
-        topRight: { x: 1150, y: 50 },
-        bottomRight: { x: 1150, y: 700 },
-        bottomLeft: { x: 50, y: 700 },
-      },
-      rotation: 0,
-      filter: 'AUTO',
-      docType: selectedDocType,
-    };
-
-    setScannedPages([newPage]);
-    setIsEditingInAdobeScan(true);
+    // Automatically proceed directly with the automatically cropped and straightened image
+    onCaptureCompleted(croppedDataUrl);
   };
 
   const handleConfirmCapturedImage = () => {
@@ -212,33 +196,11 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
         </div>
       )}
 
-      {/* Live OpenCV Scanner or Adobe Scan Editor */}
-      {isEditingInAdobeScan && scannedPages.length > 0 ? (
-        <AdobeScanEditor
-          pages={scannedPages}
-          onUpdatePages={(updated) => setScannedPages(updated)}
-          onAddPage={() => {
-            setIsEditingInAdobeScan(false);
-            setCapturedImage(null);
-          }}
-          onRetakeAll={() => {
-            setIsEditingInAdobeScan(false);
-            setScannedPages([]);
-            setCapturedImage(null);
-          }}
-          onConfirmScans={(finalPages) => {
-            const finalImg = finalPages[0]?.processedImage || capturedImage;
-            if (finalImg) {
-              onCaptureCompleted(finalImg);
-            }
-          }}
-        />
-      ) : (
-        <DocumentScannerCanvas
-          selectedDocType={selectedDocType}
-          onCaptured={handleCanvasCaptured}
-        />
-      )}
+      {/* Live Automatic Document Edge Detection & Capture Canvas */}
+      <DocumentScannerCanvas
+        selectedDocType={selectedDocType}
+        onCaptured={handleCanvasCaptured}
+      />
 
       {/* Document Privacy Selection Modal */}
       <AadhaarPrivacyModal

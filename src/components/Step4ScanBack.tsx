@@ -30,27 +30,11 @@ export const Step4ScanBack: React.FC<Step4ScanBackProps> = ({
 
   const handleCanvasCaptured = (croppedDataUrl: string, qrData?: string | null) => {
     setCapturedImage(croppedDataUrl);
-    if (qrData) {
-      setQrScannedData(qrData);
-    }
-
-    const newPage: ScannedPageItem = {
-      id: `page-back-${Date.now()}`,
-      rawImage: croppedDataUrl,
-      processedImage: croppedDataUrl,
-      corners: {
-        topLeft: { x: 50, y: 50 },
-        topRight: { x: 1150, y: 50 },
-        bottomRight: { x: 1150, y: 700 },
-        bottomLeft: { x: 50, y: 700 },
-      },
-      rotation: 0,
-      filter: 'AUTO',
-      docType,
-    };
-
-    setScannedPages([newPage]);
-    setIsEditingInAdobeScan(true);
+    const addressFromQr = qrData || '';
+    onBackCaptureCompleted(croppedDataUrl, {
+      address: addressFromQr,
+      pinCode: addressFromQr ? (addressFromQr.match(/\b\d{6}\b/)?.[0] || '') : '',
+    });
   };
 
   const handleConfirmBack = () => {
@@ -97,49 +81,21 @@ export const Step4ScanBack: React.FC<Step4ScanBackProps> = ({
       </div>
 
       {/* Mode Bar */}
-      {!isEditingInAdobeScan && (
-        <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span className="text-xs font-bold text-white">Back Side Document Scanner</span>
-          </div>
-          <span className="px-2.5 py-1 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-[10px] font-extrabold uppercase">
-            Auto & Manual Capture
-          </span>
+      <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4 text-emerald-400" />
+          <span className="text-xs font-bold text-white">Back Side Document Scanner</span>
         </div>
-      )}
+        <span className="px-2.5 py-1 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-[10px] font-extrabold uppercase">
+          Automatic Edge Detection
+        </span>
+      </div>
 
-      {/* Real-time OpenCV Canvas or Adobe Scan Editor */}
-      {isEditingInAdobeScan && scannedPages.length > 0 ? (
-        <AdobeScanEditor
-          pages={scannedPages}
-          onUpdatePages={(updated) => setScannedPages(updated)}
-          onAddPage={() => {
-            setIsEditingInAdobeScan(false);
-            setCapturedImage(null);
-          }}
-          onRetakeAll={() => {
-            setIsEditingInAdobeScan(false);
-            setScannedPages([]);
-            setCapturedImage(null);
-          }}
-          onConfirmScans={(finalPages) => {
-            const finalImg = finalPages[0]?.processedImage || capturedImage;
-            if (finalImg) {
-              const addressFromQr = qrScannedData ? qrScannedData : '';
-              onBackCaptureCompleted(finalImg, {
-                address: addressFromQr,
-                pinCode: addressFromQr ? (addressFromQr.match(/\b\d{6}\b/)?.[0] || '') : '',
-              });
-            }
-          }}
-        />
-      ) : (
-        <DocumentScannerCanvas
-          selectedDocType={docType}
-          onCaptured={handleCanvasCaptured}
-        />
-      )}
+      {/* Real-time Automatic Document Edge Detection Canvas */}
+      <DocumentScannerCanvas
+        selectedDocType={docType}
+        onCaptured={handleCanvasCaptured}
+      />
 
       {/* QR Code Scanned Info Box */}
       {qrScannedData && (
