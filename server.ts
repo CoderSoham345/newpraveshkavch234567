@@ -1161,29 +1161,19 @@ app.post('/api/ocr', async (req, res) => {
       try {
         console.log('[v0] Running Pass 1: Gemini Multimodal AI Analysis...');
         const prompt = `You are PraveshKavach™ Enterprise Identity Verification OCR AI.
-Extract structured fields from this Indian or International government identity card image.
+Extract structured fields from this government identity card image.
 
 Target Document Type Requested: ${docType || 'AUTOMATIC_DETECTION'}
 Requested Side: ${side || 'front'}
 
-RULES & INSTRUCTIONS:
-1. DOCUMENT TYPE DETECTION: Accurately identify documentType as one of:
-   AADHAAR_FRONT, AADHAAR_BACK, PAN_CARD, PASSPORT, DRIVING_LICENCE, VOTER_ID, GOVT_EMPLOYEE_ID, PRIVATE_EMPLOYEE_ID, STUDENT_ID, RC_BOOK, OCI_CARD, NREGA_JOB_CARD, SENIOR_CITIZEN_CARD, DISABILITY_ID_CARD, HEALTH_INSURANCE_CARD, POLICE_ID, ARMY_ID, OTHER_GOVT_ID, OTHER_IDENTITY_DOC.
-2. OPTICAL CONFUSION REPAIR: Repair common OCR character mistakes (0 <-> O, 1 <-> I/l, 8 <-> B, 5 <-> S, Z <-> 2, G <-> 6) based on field format rules.
-3. DATE NORMALIZATION: All dates (dob, issueDate, expiryDate) MUST be formatted as DD/MM/YYYY. Convert DD-MM-YYYY, DD.MM.YYYY, YYYY, DD Month YYYY to DD/MM/YYYY.
-4. PAN CARD CLASSIFICATION: If PAN Card, inspect 4th character of PAN number:
-   - P = Individual
-   - C = Company
-   - F = Firm
-   - H = HUF (Hindu Undivided Family)
-   - T = Trust
-   - B = Body of Individuals
-   - A = Association of Persons
-   - J = Artificial Juridical Person
-   - G = Government
-   Set panType accordingly.
-5. AADHAAR MASKING: Detect if Aadhaar is masked (e.g. XXXX XXXX 1234). Set isMaskedAadhaar=true/false and fill maskedDocumentNumber.
-6. Return strict JSON.`;
+CRITICAL OCR & EXTRACTION RULES:
+1. Extract ALL visible text fields with maximum precision.
+2. Preserve exact character accuracy. Fix common optical confusions (e.g. 0 vs O, 1 vs I/l, 8 vs B, 5 vs S).
+3. Format all dates (dob, issueDate, expiryDate) strictly as DD/MM/YYYY.
+4. Extract fatherName/husbandName/guardianName if present on card.
+5. Extract complete address and 6-digit PIN code if present.
+6. Return empty string "" for any field not present on the card - NEVER invent or hallucinate missing data.
+7. Return strict JSON payload.`;
 
         const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
         let geminiRespText: string | null = null;
@@ -1230,7 +1220,6 @@ RULES & INSTRUCTIONS:
                     academicYear: { type: Type.STRING },
                     confidenceScore: { type: Type.INTEGER },
                   },
-                  required: ['documentType', 'fullName', 'documentNumber'],
                 },
               },
             });
