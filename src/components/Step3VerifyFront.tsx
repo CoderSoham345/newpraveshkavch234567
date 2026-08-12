@@ -27,6 +27,7 @@ import { AdobeScanEditor, ScannedPageItem } from './AdobeScanEditor';
 import { DEFAULT_VISITOR_PRIVACY_PREFERENCES, maskIdentityNumber } from '../utils/privacyUtils';
 import { getDocumentPrivacyConfig } from '../utils/documentPrivacyConfig';
 import { safeFetch } from '../utils/safeApi';
+import { logOCRInputDetails } from '../utils/debugLogger';
 
 interface Step3VerifyFrontProps {
   frontImage: string;
@@ -55,6 +56,7 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
   
   const [isReOCRProcessing, setIsReOCRProcessing] = useState<boolean>(false);
   const [reOCRNotice, setReOCRNotice] = useState<string | null>(null);
+  const [ocrMetrics, setOcrMetrics] = useState<{ width: number; height: number; size: string; type: string } | null>(null);
   const [isEditingInCropEditor, setIsEditingInCropEditor] = useState<boolean>(false);
   const [cropScannedPages, setCropScannedPages] = useState<ScannedPageItem[]>([]);
 
@@ -98,6 +100,9 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
     setIsReOCRProcessing(true);
     setReOCRNotice(null);
     try {
+      const metrics = await logOCRInputDetails(targetImg, extractedData.documentType);
+      setOcrMetrics(metrics);
+
       const response = await safeFetch('/api/ocr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -106,6 +111,8 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
           docType: extractedData.documentType,
         }),
       });
+
+      console.log('OCR RESPONSE:', { received: true, status: response.status, data: response.data });
 
       if (response.ok && response.data?.extractedData) {
         const ocrResult = response.data.extractedData;
@@ -119,6 +126,10 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
             (merged as any)[key] = ocrResult[key];
           }
         });
+
+        if (ocrResult.rawText) {
+          merged.rawText = ocrResult.rawText;
+        }
         
         merged.confidenceScore = ocrResult.confidenceScore || 0;
         merged.ocrStatus = 'SUCCESS';
@@ -126,6 +137,8 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
         const revalidated = validateAndComputeFieldConfidences(merged);
         setExtractedData(revalidated);
         setReOCRNotice('✓ Document re-read successfully. Un-edited fields updated.');
+      } else if (response.data?.reason === 'NO_TEXT_DETECTED' || response.data?.error) {
+        setReOCRNotice(`⚠ ${response.data.message || 'No readable text detected in image.'}`);
       } else {
         setReOCRNotice('⚠ Could not automatically read the document image. You can enter details manually.');
       }
@@ -350,14 +363,53 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
 
           {/* Raw OCR Text Viewer Mode */}
           {showRawOcr && (
-            <div className="p-3 rounded-xl bg-black border border-amber-500/40 text-amber-300 font-mono text-[11px] space-y-1">
-              <div className="flex items-center justify-between text-[10px] text-slate-400 uppercase tracking-widest font-sans font-bold border-b border-slate-800 pb-1 mb-2">
-                <span>OCR Text Stream</span>
-                <span className="text-emerald-400 font-sans">Raw Stream</span>
+            <div className="p-3.5 rounded-xl bg-slate-950 border border-amber-500/40 text-amber-300 font-mono text-[11px] space-y-3 shadow-inner">
+              <div className="flex items-center justify-between text-[10px] text-slate-400 uppercase tracking-widest font-sans font-bold border-b border-slate-800 pb-1.5">
+                <span className="flex items-center gap-1.5 text-amber-400">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>OCR Pipeline Debug & Trace</span>
+                </span>
+                <span className="text-emerald-400 font-sans font-bold">STATUS: {extractedData.ocrStatus || 'READY'}</span>
               </div>
-              <pre className="whitespace-pre-wrap break-words leading-relaxed max-h-40 overflow-y-auto">
-                {extractedData.rawText || validatedData.rawText || 'No raw OCR stream available. You can manually enter all fields below.'}
-              </pre>
+
+              {/* Input Image Metrics */}
+              {ocrMetrics ? (
+                <div className="grid grid-cols-2 gap-2 p-2 rounded bg-slate-900/90 border border-slate-800 text-[10px] text-slate-300">
+                  <div><span className="text-slate-500 font-sans uppercase">Width x Height:</span> {ocrMetrics.width} × {ocrMetrics.height} px</div>
+                  <div><span className="text-slate-500 font-sans uppercase">File Size:</span> {ocrMetrics.size}</div>
+                  <div><span className="text-slate-500 font-sans uppercase">MIME Type:</span> {ocrMetrics.type}</div>
+                  <div><span className="text-slate-500 font-sans uppercase">Target Doc:</span> {extractedData.documentType}</div>
+                </div>
+              ) : (
+                <div className="text-[10px] text-slate-400 italic">Click "Re-read OCR" to inspect live OCR image metrics.</div>
+              )}
+
+              {/* Request / Response Status */}
+              <div className="flex items-center justify-between text-[10px] text-slate-300 px-1 font-sans font-semibold">
+                <span className="text-emerald-400">OCR REQUEST: sent = true</span>
+                <span className="text-cyan-400">OCR RESPONSE: received = true</span>
+              </div>
+
+              {/* Raw Text Stream */}
+              <div className="space-y-1">
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider font-sans font-bold">RAW OCR TEXT STREAM:</div>
+                <pre className="whitespace-pre-wrap break-words leading-relaxed max-h-36 overflow-y-auto p-2.5 bg-black rounded border border-amber-500/20 text-amber-200 text-[11px]">
+                  {extractedData.rawText || validatedData.rawText || 'No raw OCR stream detected yet. Click "Re-read OCR" or crop image to extract.'}
+                </pre>
+              </div>
+
+              {/* Extracted Key Fields */}
+              <div className="space-y-1">
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider font-sans font-bold">PARSED FIELDS RESULT:</div>
+                <div className="grid grid-cols-2 gap-1.5 p-2 bg-slate-900 rounded border border-slate-800 text-[10px]">
+                  <div><span className="text-cyan-400">Name:</span> {validatedData.fullName || '—'}</div>
+                  <div><span className="text-cyan-400">Doc Number:</span> {validatedData.documentNumber || '—'}</div>
+                  <div><span className="text-cyan-400">DOB:</span> {validatedData.dob || '—'}</div>
+                  <div><span className="text-cyan-400">Gender:</span> {validatedData.gender || '—'}</div>
+                  <div><span className="text-cyan-400">Address:</span> {validatedData.address ? `${validatedData.address.substring(0, 20)}...` : '—'}</div>
+                  <div><span className="text-cyan-400">PIN Code:</span> {validatedData.pinCode || '—'}</div>
+                </div>
+              </div>
             </div>
           )}
 

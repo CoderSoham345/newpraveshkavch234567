@@ -35,6 +35,7 @@ import {
   validateDocumentScanQuality 
 } from '../utils/scanValidator';
 import { safeFetch } from '../utils/safeApi';
+import { logOCRInputDetails } from '../utils/debugLogger';
 import { 
   initializeDocumentCamera, 
   stopCameraStream, 
@@ -279,11 +280,16 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
       // CALL OCR ENGINE FOR FIELD EXTRACTION
       let ocrData: any = null;
       try {
+        await logOCRInputDetails(croppedDataUrl, selectedDocType);
+
         const response = await safeFetch('/api/ocr', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imageBase64: croppedDataUrl, docType: selectedDocType }),
         });
+
+        console.log('OCR RESPONSE:', { received: true, status: response.status, data: response.data });
+
         if (response.ok && response.data?.extractedData) {
           ocrData = response.data.extractedData;
         }

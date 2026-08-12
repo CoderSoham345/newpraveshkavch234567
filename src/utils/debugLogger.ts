@@ -3,6 +3,46 @@
  * All logs prefixed with [v0] for easy filtering in browser console
  */
 
+export async function logOCRInputDetails(imageUrl: string, docType?: string) {
+  let type = 'image/jpeg';
+  let size = '0 KB';
+  let width = 0;
+  let height = 0;
+
+  if (imageUrl) {
+    const mimeMatch = imageUrl.match(/^data:(image\/\w+);base64,/);
+    if (mimeMatch) type = mimeMatch[1];
+    const base64Str = imageUrl.replace(/^data:image\/\w+;base64,/, '');
+    const approxBytes = Math.round((base64Str.length * 3) / 4);
+    size = `${approxBytes} bytes (${(approxBytes / 1024).toFixed(1)} KB)`;
+
+    try {
+      const img = new Image();
+      await new Promise<void>((resolve) => {
+        img.onload = () => {
+          width = img.naturalWidth || img.width;
+          height = img.naturalHeight || img.height;
+          resolve();
+        };
+        img.onerror = () => resolve();
+        img.src = imageUrl;
+      });
+    } catch (e) {}
+  }
+
+  console.log("OCR INPUT IMAGE:", {
+    width,
+    height,
+    size,
+    type,
+    docType: docType || 'AUTOMATIC_DETECTION',
+  });
+
+  console.log("OCR REQUEST:", { sent: true });
+
+  return { type, size, width, height };
+}
+
 export const debugLog = {
   // OCR Debug Logs
   ocrStart: (docType: string) => {

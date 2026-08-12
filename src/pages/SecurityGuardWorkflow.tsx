@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { safeFetch } from '../utils/safeApi';
+import { logOCRInputDetails } from '../utils/debugLogger';
 import { Header } from '../components/Header';
 import { Navigation } from '../components/Navigation';
 import { MobileFrame } from '../components/MobileFrame';
@@ -263,11 +264,16 @@ export function SecurityGuardWorkflow() {
     }
 
     try {
+      await logOCRInputDetails(imageUrl, userChosenDocType);
+
       const response = await safeFetch('/api/ocr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: imageUrl, docType: userChosenDocType }),
       });
+
+      console.log('OCR RESPONSE:', { received: true, status: response.status, data: response.data });
+
       if (response.ok && response.data?.extractedData) {
         const targetType = userChosenDocType !== 'AUTOMATIC_DETECTION' 
           ? userChosenDocType 

@@ -1285,7 +1285,19 @@ app.post('/api/ocr', async (req, res) => {
       return res.status(400).json({ success: false, error: 'imageBase64 field is required' });
     }
 
+    // Extract exact MIME type and clean Base64
+    const mimeMatch = imageBase64.match(/^data:(image\/\w+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
     const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+
+    const approxByteSize = Math.round((cleanBase64.length * 3) / 4);
+    console.log('OCR INPUT IMAGE (SERVER):', {
+      type: mimeType,
+      size: `${approxByteSize} bytes (${(approxByteSize / 1024).toFixed(1)} KB)`,
+      docType: docType || 'AUTOMATIC_DETECTION',
+      side: side || 'front',
+    });
+
     const ai = getGeminiClient();
 
     let geminiParsedData: any = null;
@@ -1302,6 +1314,11 @@ Extract structured fields and complete raw text from this government identity do
 Target Document Type Requested: ${docType || 'AUTOMATIC_DETECTION'}
 Requested Side: ${side || 'front'}
 
+CRITICAL INSTRUCTIONS:
+Read only text that is visibly present in this image.
+Do not infer, guess, complete, or fabricate missing information.
+If a field is not readable or not present, return null or empty string "".
+
 CRITICAL STAGE 1: RAW OCR TEXT STREAM
 Extract ALL visible text from top to bottom into rawText. Do not truncate, omit, or summarize. Include both English and Hindi/Regional text verbatim.
 
@@ -1316,7 +1333,7 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
 5. Extract AADHAAR / ID NUMBER (documentNumber): 12 digits (e.g. 1234 5678 9012) or 12-digit masked format.
 6. Extract MULTILINE ADDRESS (address), DISTRICT (district), STATE (state), and 6-digit PIN CODE (pinCode).
 7. PORTRAIT DETECTION (portraitDetected): Set to true if a printed photo/portrait of the individual is present on the card.
-8. Return empty string "" or null for any field not present on the card - NEVER invent or hallucinate data.`;
+8. Return null for any field not visibly present on the card - NEVER invent or hallucinate data.`;
 
         const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
         let geminiRespText: string | null = null;
@@ -1327,7 +1344,7 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
               model: modelName,
               contents: {
                 parts: [
-                  { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } },
+                  { inlineData: { mimeType, data: cleanBase64 } },
                   { text: prompt },
                 ],
               },
@@ -1383,6 +1400,7 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
         if (geminiRespText) {
           geminiParsedData = JSON.parse(geminiRespText);
           sourceUsed = 'GEMINI_AI_MULTIMODAL_ENGINE';
+          rawOCRText = geminiParsedData?.rawText || '';
           console.log('[v0] Gemini AI Multimodal Analysis successful!');
         }
       } catch (geminiError: any) {
@@ -1430,6 +1448,46 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
     // Merge Gemini Multimodal Data with Rule-Based Extraction
     const extractedFullName = geminiParsedData?.fullName || ruleBasedResult.extractedData.fullName || '';
     const extractedDocNum = geminiParsedData?.documentNumber || ruleBasedResult.extractedData.documentNumber || '';
+
+    // Check if any visible text or extracted fields exist
+    const hasAnyContent = Boolean(
+      rawOCRText.trim() ||
+      extractedFullName ||
+      extractedDocNum ||
+      geminiParsedData?.dob ||
+      geminiParsedData?.address
+    );
+
+    if (!hasAnyContent) {
+      console.warn('[v0] ❌ OCR Engine: No readable text detected in document image.');
+      return res.json({
+        success: false,
+        reason: 'NO_TEXT_DETECTED',
+        error: 'No readable text detected',
+        message: 'No readable text was detected in the document image. Please check image lighting and crop or enter details manually.',
+        extractedData: {
+          fullName: '',
+          documentNumber: '',
+          documentType: finalTargetType,
+          rawText: '',
+          confidenceScore: 0,
+          lowConfidenceFields: ['fullName', 'documentNumber', 'dob'],
+        },
+        developerLogs: {
+          rawOCRText: '',
+          opticalCorrections: [],
+          fieldConfidences: {},
+          validationResults: { hasErrors: true, errors: ['NO_TEXT_DETECTED'], warnings: [] },
+        },
+        validation: {
+          status: 'NO_TEXT_DETECTED',
+          needsReview: true,
+          lowConfidenceFields: ['fullName', 'documentNumber', 'dob'],
+        },
+        source: sourceUsed,
+        processingTimeMs: Date.now() - startTime,
+      });
+    }
 
     const lowFields: string[] = [...(ruleBasedResult.extractedData.lowConfidenceFields || [])];
     if (!extractedFullName && !lowFields.includes('fullName')) lowFields.push('fullName');
