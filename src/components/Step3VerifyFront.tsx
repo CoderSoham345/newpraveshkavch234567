@@ -142,12 +142,7 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
       id: `crop-page-${Date.now()}`,
       rawImage: frontImage,
       processedImage: frontImage,
-      corners: {
-        topLeft: { x: 0, y: 0 },
-        topRight: { x: 1200, y: 0 },
-        bottomRight: { x: 1200, y: 750 },
-        bottomLeft: { x: 0, y: 750 },
-      },
+      corners: undefined as any, // Let AdobeScanEditor calculate exact natural dimensions
       rotation: 0,
       filter: 'AUTO',
       docType: validatedData.documentType,
@@ -453,11 +448,11 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
             <button
               type="button"
               onClick={onProceedToScanBack}
-              className="flex-1 py-3.5 rounded-xl font-extrabold text-xs shadow-xl flex items-center justify-center gap-2 uppercase tracking-wider transition-all bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-blue-500/20 cursor-pointer active:scale-95"
+              className="flex-1 py-3.5 px-6 rounded-xl font-extrabold text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2.5 uppercase tracking-wider transition-all bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-blue-500/20 cursor-pointer active:scale-98 touch-manipulation min-h-[52px]"
               id="btn-continue-scan-back"
             >
               <span>CONFIRM DETAILS & PROCEED TO FACE CAPTURE</span>
-              <ArrowRight className="w-4 h-4" />
+              <ArrowRight className="w-5 h-5 text-white shrink-0" />
             </button>
           </div>
 
@@ -465,27 +460,26 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
 
       </div>
 
-      {/* Modal for In-Page Adobe Scan Editor */}
+      {/* Modal for Full-Screen Mobile Adobe Scan Editor */}
       {isEditingInCropEditor && cropScannedPages.length > 0 && (
-        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md p-4 flex items-center justify-center">
-          <div className="w-full max-w-4xl h-[85vh]">
-            <AdobeScanEditor
-              pages={cropScannedPages}
-              onUpdatePages={(updated) => setCropScannedPages(updated)}
-              onAddPage={() => setIsEditingInCropEditor(false)}
-              onRetakeAll={() => setIsEditingInCropEditor(false)}
-              onConfirmScans={(finalPages) => {
-                const croppedImg = finalPages[0]?.processedImage || frontImage;
-                if (onUpdateFrontImage) {
-                  onUpdateFrontImage(croppedImg);
-                }
-                setIsEditingInCropEditor(false);
-                // Run Re-OCR automatically on newly cropped image!
-                handleRunReOCR(croppedImg);
-              }}
-            />
-          </div>
-        </div>
+        <AdobeScanEditor
+          pages={cropScannedPages}
+          onUpdatePages={(updated) => setCropScannedPages(updated)}
+          onAddPage={() => setIsEditingInCropEditor(false)}
+          onRetakeAll={() => {
+            setIsEditingInCropEditor(false);
+            onRetakeFront();
+          }}
+          onConfirmScans={(finalPages) => {
+            const croppedImg = finalPages[0]?.processedImage || frontImage;
+            if (onUpdateFrontImage) {
+              onUpdateFrontImage(croppedImg);
+            }
+            setIsEditingInCropEditor(false);
+            // Run Re-OCR automatically on newly cropped image!
+            handleRunReOCR(croppedImg);
+          }}
+        />
       )}
 
       {/* Save Document Modal */}

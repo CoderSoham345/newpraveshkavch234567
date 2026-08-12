@@ -30,7 +30,7 @@ export function AIChatbot() {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-br from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition flex items-center justify-center text-2xl z-40 hover:scale-110 duration-200"
+        className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white rounded-full shadow-xl hover:shadow-2xl transition flex items-center justify-center text-xl sm:text-2xl z-30 hover:scale-110 duration-200 active:scale-95 cursor-pointer touch-manipulation"
         title="Open AI Assistant"
       >
         💬
@@ -39,7 +39,7 @@ export function AIChatbot() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 w-96 h-[32rem] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col z-50 animate-in fade-in duration-300">
+    <div className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-2rem)] max-w-sm sm:w-96 h-[28rem] sm:h-[32rem] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col z-40 animate-in fade-in duration-300 font-sans">
       {/* Header */}
       <div className="bg-gradient-to-r from-cyan-600 to-blue-600 px-6 py-4 rounded-t-2xl flex items-center justify-between">
         <div>
