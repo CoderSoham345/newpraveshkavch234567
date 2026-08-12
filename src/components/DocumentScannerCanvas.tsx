@@ -363,7 +363,7 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
   // Continue with captured photo
   const handleContinue = () => {
     if (capturedImage) {
-      onCaptured(capturedImage, capturedQrData);
+      onCaptured(capturedImage, capturedQrData, scanValidation, extractedOcrData);
     }
   };
 
@@ -687,45 +687,46 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
     );
   }
 
-  // --- CAPTURED STATE DISPLAY WITH QUALITY GATE & HARD LOCK ---
+  // --- CAPTURED STATE DISPLAY WITH ASSISTIVE QUALITY NOTICE ---
   if (cameraState === 'CAPTURED' && capturedImage) {
-    const canContinue = scanValidation?.status === 'PASS';
+    const isHighQualityPass = scanValidation?.status === 'PASS';
+    const canContinue = true; // Always allow user to continue regardless of OCR or scan score!
 
     return (
       <div className="relative w-full rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden shadow-2xl flex flex-col items-center p-4 sm:p-6 space-y-5 animate-fade-in">
         
         {/* Status Header Banner */}
         <div className={`w-full p-4 rounded-xl border flex items-center justify-between ${
-          canContinue 
+          isHighQualityPass 
             ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300' 
-            : 'bg-rose-950/80 border-rose-500/60 text-rose-300'
+            : 'bg-amber-950/80 border-amber-500/60 text-amber-300'
         }`}>
           <div className="flex items-start gap-3">
-            {canContinue ? (
+            {isHighQualityPass ? (
               <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0 mt-0.5" />
             ) : (
-              <AlertTriangle className="w-6 h-6 text-rose-400 shrink-0 mt-0.5" />
+              <AlertTriangle className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
             )}
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-extrabold uppercase tracking-wider">
-                  {canContinue ? 'SCAN ACCEPTED — QUALITY PASSED' : 'SCAN REJECTED — RETAKE REQUIRED'}
+                  {isHighQualityPass ? 'DOCUMENT CAPTURED — HIGH QUALITY READ' : 'DOCUMENT CAPTURED — ASSISTIVE REVIEW'}
                 </h3>
                 <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${
-                  canContinue ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500 text-white'
+                  isHighQualityPass ? 'bg-emerald-500 text-slate-950' : 'bg-amber-500 text-slate-950'
                 }`}>
-                  {canContinue ? '100% VERIFIED' : 'ACTION REQUIRED'}
+                  {isHighQualityPass ? 'AUTO-READ OK' : 'MANUAL REVIEW'}
                 </span>
               </div>
               <p className="text-xs opacity-90 mt-0.5">
-                {canContinue
-                  ? 'All document boundaries, image quality metrics, and required Aadhaar fields validated successfully.'
-                  : 'The scan failed strict quality validation. Please review reasons below and retake the photo.'}
+                {isHighQualityPass
+                  ? 'All document boundaries and fields were detected successfully.'
+                  : '⚠ Some details or boundaries could not be read automatically. You can retake, crop/edit, or continue and enter details manually.'}
               </p>
             </div>
           </div>
           <div className="text-right shrink-0 font-mono text-xs font-bold">
-            <span className="block text-[10px] uppercase opacity-75">SCORE</span>
+            <span className="block text-[10px] uppercase opacity-75">QUALITY SCORE</span>
             <span className="text-lg font-black">{scanValidation?.score ?? 0}/100</span>
           </div>
         </div>
@@ -737,7 +738,7 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
           <div className="lg:col-span-5 flex flex-col items-center justify-center bg-slate-900/90 rounded-xl p-3 border border-slate-800 relative">
             <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider self-start mb-2 flex items-center gap-1">
               <Scan className="w-3.5 h-3.5 text-cyan-400" />
-              <span>PROCESSED & CROPPED DOCUMENT</span>
+              <span>PROCESSED DOCUMENT PHOTO</span>
             </span>
 
             <div className="relative w-full rounded-lg overflow-hidden border border-slate-700 bg-black">
@@ -767,30 +768,30 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
               <div className={`p-2 rounded-lg border flex items-center justify-between ${
                 scanValidation?.documentComplete
                   ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
-                  : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                  : 'bg-amber-950/40 border-amber-500/30 text-amber-300'
               }`}>
                 <span className="flex items-center gap-1.5">
                   {scanValidation?.documentComplete ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
-                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                   )}
                   <span>4 Corners / Boundary</span>
                 </span>
-                <span className="text-[10px] font-mono">{scanValidation?.documentComplete ? 'Complete' : 'Cut Off'}</span>
+                <span className="text-[10px] font-mono">{scanValidation?.documentComplete ? 'Complete' : 'Manual Crop Recommended'}</span>
               </div>
 
               {/* Brightness */}
               <div className={`p-2 rounded-lg border flex items-center justify-between ${
                 scanValidation?.brightness.passed
                   ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
-                  : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                  : 'bg-amber-950/40 border-amber-500/30 text-amber-300'
               }`}>
                 <span className="flex items-center gap-1.5">
                   {scanValidation?.brightness.passed ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
-                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                   )}
                   <span>Brightness / Light</span>
                 </span>
@@ -801,13 +802,13 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
               <div className={`p-2 rounded-lg border flex items-center justify-between ${
                 scanValidation?.sharpness.passed
                   ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
-                  : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                  : 'bg-amber-950/40 border-amber-500/30 text-amber-300'
               }`}>
                 <span className="flex items-center gap-1.5">
                   {scanValidation?.sharpness.passed ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
-                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                   )}
                   <span>Sharpness / Clarity</span>
                 </span>
@@ -818,35 +819,35 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
               <div className={`p-2 rounded-lg border flex items-center justify-between ${
                 scanValidation?.glare.passed
                   ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
-                  : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                  : 'bg-amber-950/40 border-amber-500/30 text-amber-300'
               }`}>
                 <span className="flex items-center gap-1.5">
                   {scanValidation?.glare.passed ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
-                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                   )}
                   <span>Glare & Reflection</span>
                 </span>
-                <span className="text-[10px] font-mono">{scanValidation?.glare.passed ? 'No Glare' : 'Glare'}</span>
+                <span className="text-[10px] font-mono">{scanValidation?.glare.passed ? 'No Glare' : 'Slight Glare'}</span>
               </div>
 
               {/* Cardholder Name */}
               <div className={`p-2 rounded-lg border flex items-center justify-between col-span-1 sm:col-span-2 ${
                 scanValidation?.fields.fullName.passed
                   ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
-                  : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                  : 'bg-amber-950/40 border-amber-500/30 text-amber-300'
               }`}>
                 <span className="flex items-center gap-1.5 truncate">
                   {scanValidation?.fields.fullName.passed ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
-                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                   )}
-                  <span className="truncate">Name: <strong>{scanValidation?.fields.fullName.value}</strong></span>
+                  <span className="truncate">Name: <strong>{scanValidation?.fields.fullName.value || 'Not detected'}</strong></span>
                 </span>
                 <span className="text-[10px] font-mono shrink-0 ml-2">
-                  {scanValidation?.fields.fullName.passed ? 'Validated' : 'Failed'}
+                  {scanValidation?.fields.fullName.passed ? 'Validated' : 'Editable'}
                 </span>
               </div>
 
@@ -854,67 +855,40 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
               <div className={`p-2 rounded-lg border flex items-center justify-between col-span-1 sm:col-span-2 ${
                 scanValidation?.fields.address.passed
                   ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
-                  : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                  : 'bg-amber-950/40 border-amber-500/30 text-amber-300'
               }`}>
                 <span className="flex items-center gap-1.5 truncate">
                   {scanValidation?.fields.address.passed ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
-                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                   )}
-                  <span className="truncate">Address: <strong>{scanValidation?.fields.address.value}</strong></span>
+                  <span className="truncate">Address: <strong>{scanValidation?.fields.address.value || 'Not detected'}</strong></span>
                 </span>
                 <span className="text-[10px] font-mono shrink-0 ml-2">
-                  {scanValidation?.fields.address.passed ? 'Validated' : 'Failed'}
+                  {scanValidation?.fields.address.passed ? 'Validated' : 'Editable'}
                 </span>
-              </div>
-
-              {/* DOB / Year */}
-              <div className={`p-2 rounded-lg border flex items-center justify-between ${
-                scanValidation?.fields.dateOfBirth.passed
-                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
-                  : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
-              }`}>
-                <span className="flex items-center gap-1.5 truncate">
-                  {scanValidation?.fields.dateOfBirth.passed ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  ) : (
-                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                  )}
-                  <span className="truncate">DOB: <strong>{scanValidation?.fields.dateOfBirth.value}</strong></span>
-                </span>
-              </div>
-
-              {/* Portrait */}
-              <div className="p-2 rounded-lg border bg-emerald-950/40 border-emerald-500/30 text-emerald-300 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Portrait Region</span>
-                </span>
-                <span className="text-[10px] font-mono">Preserved</span>
               </div>
 
             </div>
 
-            {/* Error Messages List if Failed */}
-            {scanValidation?.errors && scanValidation.errors.length > 0 && (
-              <div className="p-3 bg-rose-950/90 border border-rose-500/60 rounded-xl space-y-1 text-xs text-rose-200">
-                <div className="font-bold flex items-center gap-1 text-rose-300 uppercase tracking-wider text-[11px]">
-                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                  <span>REASONS FOR REJECTION:</span>
+            {/* Non-blocking Notice */}
+            {!isHighQualityPass && (
+              <div className="p-3 bg-amber-950/60 border border-amber-500/40 rounded-xl space-y-1 text-xs text-amber-200">
+                <div className="font-bold flex items-center gap-1 text-amber-300 uppercase tracking-wider text-[11px]">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                  <span>ASSISTIVE MODE: MANUAL ENTRY & EDITING ENABLED</span>
                 </div>
-                <ul className="list-disc list-inside space-y-0.5 text-[11px] leading-relaxed">
-                  {scanValidation.errors.map((err, i) => (
-                    <li key={i}>{err}</li>
-                  ))}
-                </ul>
+                <p className="text-[11px] leading-relaxed">
+                  Automatic reading is an assistive tool. You can click <strong>CONTINUE TO NEXT STEP</strong> below to review and manually fill or edit any details.
+                </p>
               </div>
             )}
           </div>
 
         </div>
 
-        {/* Action Buttons Bar with Hard Gate Lock */}
+        {/* Action Buttons Bar - Non-Blocking */}
         <div className="flex flex-wrap items-center justify-between gap-3 w-full pt-2 border-t border-slate-800">
           
           <button
@@ -935,27 +909,19 @@ export const DocumentScannerCanvas: React.FC<DocumentScannerCanvasProps> = ({
               id="btn-manual-crop-gate"
             >
               <Scissors className="w-4 h-4 text-cyan-400" />
-              <span>MANUAL CROP / EDIT</span>
+              <span>EDIT / CROP DOCUMENT</span>
             </button>
           )}
 
           <button
             type="button"
-            disabled={!canContinue}
             onClick={() => {
-              if (canContinue) {
-                onCaptured(capturedImage, capturedQrData, scanValidation, extractedOcrData);
-              }
+              onCaptured(capturedImage, capturedQrData, scanValidation, extractedOcrData);
             }}
-            className={`py-3.5 px-6 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
-              canContinue
-                ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 shadow-lg shadow-emerald-500/20 border border-emerald-400 cursor-pointer active:scale-95'
-                : 'bg-slate-800/80 text-slate-500 border border-slate-700/80 cursor-not-allowed opacity-60'
-            }`}
+            className="py-3.5 px-6 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 shadow-lg shadow-emerald-500/20 border border-emerald-400 cursor-pointer active:scale-95"
             id="btn-continue-quality-gate"
-            title={canContinue ? 'Proceed to next step' : 'Continue is locked until all quality checks pass'}
+            title="Proceed to review and edit extracted details"
           >
-            {!canContinue && <Lock className="w-4 h-4 text-slate-500" />}
             <span>CONTINUE TO NEXT STEP</span>
             <ArrowRight className="w-4 h-4" />
           </button>

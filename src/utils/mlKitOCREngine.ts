@@ -4,6 +4,8 @@
  * Uses Google ML Kit Text Recognition + field-specific parsing
  */
 
+import { safeFetch } from './safeApi';
+
 export interface FieldData {
   value: string;
   confidence: number; // 0-100
@@ -370,28 +372,55 @@ export class MLKitOCREngine {
       // Preprocess image for better accuracy
       const processed = await preprocessImage(imageData);
       
-      // In production, use:
-      // const recognizer = await ml.vision.TextRecognition.create();
-      // const result = await recognizer.recognizeText(imageData);
-      // return processOCRText(result.text);
-      
-      // For now, return placeholder
-      return {
-        rawText: '',
-        fields: new Map(),
-        overallConfidence: 0,
-        warnings: ['ML Kit not initialized. Set VITE_FIREBASE_* env vars'],
-        documentType: 'Unknown',
-      };
+      const canvas = document.createElement('canvas');
+      canvas.width = processed.width;
+      canvas.height = processed.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.putImageData(processed, 0, 0);
+      const imageBase64 = canvas.toDataURL('image/jpeg', 0.9);
+
+      const response = await safeFetch('/api/ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64, docType: 'AUTOMATIC_DETECTION' }),
+      });
+
+      if (response.ok && response.data?.extractedData) {
+        const ext = response.data.extractedData;
+        const fields = new Map<string, FieldData>();
+
+        if (ext.fullName) {
+          fields.set('fullName', { value: ext.fullName, confidence: 90, color: 'green', requiresManualVerification: false });
+        }
+        if (ext.documentNumber) {
+          fields.set('documentNumber', { value: ext.documentNumber, confidence: 90, color: 'green', requiresManualVerification: false });
+        }
+        if (ext.dob) {
+          fields.set('dob', { value: ext.dob, confidence: 90, color: 'green', requiresManualVerification: false });
+        }
+        if (ext.gender) {
+          fields.set('gender', { value: ext.gender, confidence: 90, color: 'green', requiresManualVerification: false });
+        }
+        if (ext.address) {
+          fields.set('address', { value: ext.address, confidence: 85, color: 'green', requiresManualVerification: false });
+        }
+        if (ext.pinCode) {
+          fields.set('pinCode', { value: ext.pinCode, confidence: 90, color: 'green', requiresManualVerification: false });
+        }
+
+        return {
+          rawText: ext.rawText || '',
+          fields,
+          overallConfidence: ext.confidenceScore || 85,
+          warnings: [],
+          documentType: ext.documentType || 'Aadhaar Card',
+        };
+      }
+
+      return processOCRText('');
     } catch (error) {
       console.error('[OCR] Processing failed:', error);
-      return {
-        rawText: '',
-        fields: new Map(),
-        overallConfidence: 0,
-        warnings: [`OCR error: ${error}`],
-        documentType: 'Unknown',
-      };
+      return processOCRText('');
     }
   }
 

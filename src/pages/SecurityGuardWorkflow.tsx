@@ -252,13 +252,13 @@ export function SecurityGuardWorkflow() {
 
     const userChosenDocType = selectedDocType;
 
-    if (isSample && sampleData) {
+    if ((isSample && sampleData) || (sampleData && (sampleData.fullName || sampleData.documentNumber))) {
       const targetType = userChosenDocType !== 'AUTOMATIC_DETECTION' ? userChosenDocType : (sampleData.documentType || 'PAN_CARD');
       setExtractedData({
         ...sampleData,
         documentType: targetType,
       });
-      setCurrentStep(4);
+      setCurrentStep(3);
       return;
     }
 
@@ -285,7 +285,7 @@ export function SecurityGuardWorkflow() {
       setExtractedData(generateEmptyDocData(userChosenDocType));
     }
 
-    setCurrentStep(4);
+    setCurrentStep(3);
   };
 
   const handleBackCaptureCompleted = (backUrl: string, addressData?: any) => {
@@ -589,6 +589,7 @@ export function SecurityGuardWorkflow() {
                   onProceedToScanBack={handleProceedToFaceCheck}
                   onRetakeFront={() => setCurrentStep(2)}
                   onNavigateToHistory={() => setActiveTab('history')}
+                  onUpdateFrontImage={setFrontDocImage}
                 />
               )}
               {currentStep === 5 && (

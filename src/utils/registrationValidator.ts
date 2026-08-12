@@ -63,29 +63,50 @@ export function validateFinalRegistration(
 
   // 3. OCR Full Name Check
   const fullName = (input.extractedData?.fullName || '').trim();
-  const isNameInvalid =
-    !fullName ||
-    fullName.length < 3 ||
-    /GOVT|AADHAAR|INDIA|CARD|UNIQUE|GOVERNMENT|AUTHORITY/i.test(fullName) ||
-    fullName === 'Not Detected' ||
-    fullName === 'Unknown';
+  const isManualName = Boolean(input.extractedData?.manualOverrides?.fullName);
+  
+  let isNameInvalid = !fullName || fullName === 'Not Detected' || fullName === 'Unknown';
+  if (!isManualName) {
+    if (fullName.length < 2 || /GOVT|AADHAAR|INDIA|CARD|UNIQUE|GOVERNMENT|AUTHORITY/i.test(fullName)) {
+      isNameInvalid = true;
+    }
+  } else if (fullName.length < 2) {
+    isNameInvalid = true;
+  }
 
   if (isNameInvalid) {
     missingFields.fullName = true;
-    errors.push('Visitor Name could not be verified from OCR document scan. Please fill in a valid full name.');
+    errors.push('Visitor Name is missing. Please enter the visitor full name.');
   }
 
   // 4. OCR Document Number Check
   const docNum = (input.extractedData?.documentNumber || '').trim();
-  const isDocNumInvalid =
-    !docNum ||
-    docNum.length < 5 ||
-    /XXXX|0000-0000|NOT DETECTED/i.test(docNum) ||
-    docNum === 'Not Detected';
+  const isManualDocNum = Boolean(input.extractedData?.manualOverrides?.documentNumber);
+  const isMaskedDoc = Boolean(input.extractedData?.isMaskedAadhaar) || Boolean(input.extractedData?.maskedDocumentNumber) || /X{4}/i.test(docNum);
+
+  let isDocNumInvalid = false;
+  if (!docNum || docNum === 'Not Detected' || /NOT DETECTED/i.test(docNum)) {
+    isDocNumInvalid = true;
+  } else if (!isManualDocNum) {
+    if (docNum.length < 3) {
+      isDocNumInvalid = true;
+    } else if (isMaskedDoc) {
+      const cleaned = docNum.replace(/[\s-]/g, '');
+      const hasEndingDigits = /\d{4}$/.test(cleaned);
+      const isAllX = /^X+$/i.test(cleaned);
+      if (isAllX || (!hasEndingDigits && cleaned.length < 8)) {
+        isDocNumInvalid = true;
+      }
+    } else if (/^0{5,}$/.test(docNum.replace(/[\s-]/g, '')) || docNum === '0000-0000') {
+      isDocNumInvalid = true;
+    }
+  } else if (docNum.length < 2) {
+    isDocNumInvalid = true;
+  }
 
   if (isDocNumInvalid) {
     missingFields.documentNumber = true;
-    errors.push('Document ID Number could not be verified from scan. Please verify or re-enter document number.');
+    errors.push('Document Identification Number is missing. Please enter the document number.');
   }
 
   // 5. Live Face Capture Check

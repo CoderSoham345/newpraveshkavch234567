@@ -39,14 +39,18 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
   const [scannedPages, setScannedPages] = useState<ScannedPageItem[]>([]);
   const [isEditingInAdobeScan, setIsEditingInAdobeScan] = useState<boolean>(false);
 
-  // Supported document types - All 20+ types for comprehensive document support
+  // Primary & Comprehensive document types
   const supportedDocTypes: DocumentType[] = [
     'AUTOMATIC_DETECTION',
+    'AADHAAR_CARD',
+    'PAN_CARD',
+    'DRIVING_LICENCE',
+    'COLLEGE_ID',
+    'EMPLOYEE_ID',
+    'OTHER',
     'AADHAAR_FRONT',
     'AADHAAR_BACK',
-    'PAN_CARD',
     'PASSPORT',
-    'DRIVING_LICENCE',
     'VOTER_ID',
     'GOVT_EMPLOYEE_ID',
     'PRIVATE_EMPLOYEE_ID',
@@ -66,15 +70,19 @@ export const Step2ScanFront: React.FC<Step2ScanFrontProps> = ({
 
   const getDocumentLabel = (type: DocumentType): string => {
     const labels: Record<DocumentType, string> = {
-      'AUTOMATIC_DETECTION': 'Automatic Detection (Recommended)',
-      'AADHAAR_FRONT': 'Aadhaar Card (Front)',
-      'AADHAAR_BACK': 'Aadhaar Card (Back)',
+      'AUTOMATIC_DETECTION': 'Auto Detect / Select',
+      'AADHAAR_CARD': 'Aadhaar Card (Unified Multi-Side)',
       'PAN_CARD': 'PAN Card',
-      'PASSPORT': 'Passport',
       'DRIVING_LICENCE': 'Driving Licence',
+      'COLLEGE_ID': 'College / Student ID',
+      'EMPLOYEE_ID': 'Employee ID (Govt / Corporate)',
+      'OTHER': 'Other Card / Custom Identity Document',
+      'AADHAAR_FRONT': 'Aadhaar Card (Front Only)',
+      'AADHAAR_BACK': 'Aadhaar Card (Back Only)',
+      'PASSPORT': 'Passport (Indian Republic)',
       'VOTER_ID': 'Voter ID (EPIC)',
       'GOVT_EMPLOYEE_ID': 'Government Employee ID',
-      'PRIVATE_EMPLOYEE_ID': 'Private Employee ID',
+      'PRIVATE_EMPLOYEE_ID': 'Private Corporate Employee ID',
       'STUDENT_ID': 'Student ID',
       'RC_BOOK': 'Vehicle Registration Certificate (RC)',
       'OCI_CARD': 'OCI Card',

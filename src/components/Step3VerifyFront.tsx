@@ -14,16 +14,19 @@ import {
   FolderDown,
   Shield,
   Lock,
-  Eye,
-  EyeOff
+  Scissors,
+  RefreshCw,
+  Check
 } from 'lucide-react';
 import { ExtractedDocData, FieldWithConfidence, VisitorPrivacyPreferences, VisibilityMode, AadhaarPrivacySettings } from '../types';
 import { DOCUMENT_SCHEMAS, getDocumentSchema, validateAndComputeFieldConfidences } from '../utils/documentParsers';
 import { SaveDocumentModal } from './SaveDocumentModal';
 import { PrivacyControlModal } from './PrivacyControlModal';
 import { AadhaarPrivacyModal } from './AadhaarPrivacyModal';
+import { AdobeScanEditor, ScannedPageItem } from './AdobeScanEditor';
 import { DEFAULT_VISITOR_PRIVACY_PREFERENCES, maskIdentityNumber } from '../utils/privacyUtils';
 import { getDocumentPrivacyConfig } from '../utils/documentPrivacyConfig';
+import { safeFetch } from '../utils/safeApi';
 
 interface Step3VerifyFrontProps {
   frontImage: string;
@@ -32,6 +35,7 @@ interface Step3VerifyFrontProps {
   onProceedToScanBack: () => void;
   onRetakeFront: () => void;
   onNavigateToHistory?: () => void;
+  onUpdateFrontImage?: (newImgUrl: string) => void;
 }
 
 export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
@@ -41,12 +45,18 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
   onProceedToScanBack,
   onRetakeFront,
   onNavigateToHistory,
+  onUpdateFrontImage,
 }) => {
-  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [isEditing, setIsEditing] = useState<boolean>(true); // Default to editing mode for direct input!
   const [showRawOcr, setShowRawOcr] = useState<boolean>(false);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState<boolean>(false);
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState<boolean>(false);
   const [isAadhaarModalOpen, setIsAadhaarModalOpen] = useState<boolean>(false);
+  
+  const [isReOCRProcessing, setIsReOCRProcessing] = useState<boolean>(false);
+  const [reOCRNotice, setReOCRNotice] = useState<string | null>(null);
+  const [isEditingInCropEditor, setIsEditingInCropEditor] = useState<boolean>(false);
+  const [cropScannedPages, setCropScannedPages] = useState<ScannedPageItem[]>([]);
 
   const privacyPrefs: VisitorPrivacyPreferences = extractedData.privacyPreferences || DEFAULT_VISITOR_PRIVACY_PREFERENCES;
   const aadhaarSettings: AadhaarPrivacySettings = extractedData.aadhaarPrivacy || { useMaskedAadhaar: true };
@@ -63,33 +73,97 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
   const validatedData = validateAndComputeFieldConfidences(extractedData);
   const currentSchema = getDocumentSchema(validatedData?.documentType);
 
-  // Strict Fail-Closed Security Rules Check
+  // Field presence checks for assistive warning only (non-blocking)
   const nameVal = (validatedData.fullName || '').trim();
   const docNumVal = (validatedData.documentNumber || '').trim();
-  const isNameValid = nameVal.length >= 3 && !/GOVT|AADHAAR|INDIA|CARD|UNIQUE|GOVERNMENT|AUTHORITY/i.test(nameVal) && /^[A-Za-z\s\.\'-]+$/.test(nameVal);
-  const isDocNumValid = docNumVal.length >= 5 && !/XXXX|0000-0000/i.test(docNumVal);
-  const isAddressValid = Boolean((validatedData.address || '').trim().length >= 5);
-  const isDobValid = Boolean((validatedData.dob || '').trim().length >= 4);
-
-  const isFailClosedPass = isNameValid && isDocNumValid;
+  const isNamePresent = nameVal.length >= 2 && !/GOVT|AADHAAR|INDIA|CARD|UNIQUE/i.test(nameVal);
+  const isDocNumPresent = docNumVal.length >= 4 && !/XXXX/i.test(docNumVal);
+  const isComplete = isNamePresent && isDocNumPresent;
 
   const handleFieldValueChange = (key: keyof ExtractedDocData, val: any) => {
     const updated = {
       ...extractedData,
       [key]: val,
+      manualOverrides: {
+        ...(extractedData.manualOverrides || {}),
+        [key]: true,
+      },
+      ocrStatus: 'MANUAL' as const,
     };
     const revalidated = validateAndComputeFieldConfidences(updated);
     setExtractedData(revalidated);
   };
 
-  const getConfidenceBadgeColor = (confidence: number, isValid: boolean) => {
+  const handleRunReOCR = async (targetImg = frontImage) => {
+    setIsReOCRProcessing(true);
+    setReOCRNotice(null);
+    try {
+      const response = await safeFetch('/api/ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: targetImg,
+          docType: extractedData.documentType,
+        }),
+      });
+
+      if (response.ok && response.data?.extractedData) {
+        const ocrResult = response.data.extractedData;
+        const manualMap = extractedData.manualOverrides || {};
+        
+        // Preserve manually overridden fields!
+        const merged: ExtractedDocData = { ...extractedData };
+        Object.keys(ocrResult).forEach((k) => {
+          const key = k as keyof ExtractedDocData;
+          if (!manualMap[key] && ocrResult[key] !== undefined && ocrResult[key] !== '') {
+            (merged as any)[key] = ocrResult[key];
+          }
+        });
+        
+        merged.confidenceScore = ocrResult.confidenceScore || 85;
+        merged.ocrStatus = 'SUCCESS';
+        
+        const revalidated = validateAndComputeFieldConfidences(merged);
+        setExtractedData(revalidated);
+        setReOCRNotice('✓ Document re-read successfully. Un-edited fields updated.');
+      } else {
+        setReOCRNotice('⚠ Could not automatically read the document image. You can enter details manually.');
+      }
+    } catch (err) {
+      console.error('Re-OCR error:', err);
+      setReOCRNotice('⚠ Automatic reading unavailable. You can enter details manually.');
+    } finally {
+      setIsReOCRProcessing(false);
+    }
+  };
+
+  const handleOpenCropModal = () => {
+    const pageItem: ScannedPageItem = {
+      id: `crop-page-${Date.now()}`,
+      rawImage: frontImage,
+      processedImage: frontImage,
+      corners: {
+        topLeft: { x: 0, y: 0 },
+        topRight: { x: 1200, y: 0 },
+        bottomRight: { x: 1200, y: 750 },
+        bottomLeft: { x: 0, y: 750 },
+      },
+      rotation: 0,
+      filter: 'AUTO',
+      docType: validatedData.documentType,
+    };
+    setCropScannedPages([pageItem]);
+    setIsEditingInCropEditor(true);
+  };
+
+  const getConfidenceBadgeColor = (confidence: number, isValid: boolean, isManual: boolean) => {
+    if (isManual) {
+      return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/40';
+    }
     if (!isValid || confidence < 80) {
-      return 'bg-rose-500/10 text-rose-400 border-rose-500/40';
+      return 'bg-amber-500/10 text-amber-400 border-amber-500/40';
     }
-    if (confidence >= 95) {
-      return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/40';
-    }
-    return 'bg-amber-500/10 text-amber-400 border-amber-500/40';
+    return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/40';
   };
 
   return (
@@ -103,30 +177,60 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
               ✓
             </span>
             <span className="text-xs font-semibold text-emerald-400 uppercase tracking-widest">
-              Extracted Document Recognition & Schema Review
+              Extracted Document Recognition & Manual Review
             </span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-white mt-1 flex items-center gap-2">
-            <span>DOCUMENT TYPE:</span>
-            <span className="text-cyan-400 font-extrabold">{validatedData.documentType.toUpperCase()}</span>
-          </h2>
+          <div className="flex flex-wrap items-center gap-2 mt-1">
+            <span className="text-xs font-semibold text-slate-300">DOCUMENT TYPE:</span>
+            <select
+              value={validatedData.documentType || 'OTHER'}
+              onChange={(e) => {
+                const newType = e.target.value as DocumentType;
+                setExtractedData({
+                  ...extractedData,
+                  documentType: newType,
+                });
+              }}
+              className="bg-slate-950 border border-slate-700 text-cyan-300 font-extrabold text-xs sm:text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-400 cursor-pointer"
+              id="select-verify-doc-type"
+            >
+              <option value="AADHAAR_CARD">Aadhaar Card (Unified Multi-Side)</option>
+              <option value="PAN_CARD">PAN Card</option>
+              <option value="DRIVING_LICENCE">Driving Licence</option>
+              <option value="COLLEGE_ID">College / Student ID</option>
+              <option value="EMPLOYEE_ID">Employee ID (Govt / Corporate)</option>
+              <option value="OTHER">Other / Custom Identity Document</option>
+              <option value="PASSPORT">Passport</option>
+              <option value="VOTER_ID">Voter ID (EPIC)</option>
+              <option value="GOVT_EMPLOYEE_ID">Govt Employee ID</option>
+              <option value="PRIVATE_EMPLOYEE_ID">Corporate Employee ID</option>
+              <option value="STUDENT_ID">Student ID</option>
+              <option value="AUTOMATIC_DETECTION">Auto Detect / Select</option>
+            </select>
+          </div>
           <p className="text-xs text-slate-400">
-            Review extracted details below. You can manually edit any field before proceeding to live face capture.
+            Review and edit details below. Manual entry is fully supported and enabled.
           </p>
         </div>
 
-        {/* Overall Confidence Badge */}
+        {/* OCR Status Badge */}
         <div className={`flex items-center gap-2.5 px-3.5 py-2 rounded-xl border ${
-          validatedData.confidenceScore >= 95
+          Object.keys(extractedData.manualOverrides || {}).length > 0
+            ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300'
+            : isComplete
             ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
-            : validatedData.confidenceScore >= 80
-            ? 'bg-amber-500/10 border-amber-500/40 text-amber-300'
-            : 'bg-rose-500/10 border-rose-500/40 text-rose-300'
+            : 'bg-amber-500/10 border-amber-500/40 text-amber-300'
         }`}>
-          <Sparkles className="w-5 h-5 text-cyan-400 animate-spin" />
+          <Sparkles className="w-5 h-5 text-cyan-400" />
           <div className="text-right">
-            <span className="text-[10px] text-slate-400 font-semibold uppercase block">AI OCR Precision</span>
-            <span className="text-base font-black">{validatedData.confidenceScore}%</span>
+            <span className="text-[10px] text-slate-400 font-semibold uppercase block">OCR Mode</span>
+            <span className="text-xs font-black">
+              {Object.keys(extractedData.manualOverrides || {}).length > 0
+                ? '✓ MANUALLY VERIFIED'
+                : isComplete
+                ? '✓ READ AUTOMATICALLY'
+                : '⚠ MANUAL EDIT ASSIST'}
+            </span>
           </div>
         </div>
       </div>
@@ -134,7 +238,7 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
       {/* Main Content Grid: Document Image Preview (Left) vs Dynamic Form (Right) */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         
-        {/* Left Column: Image Preview & Classification Tag */}
+        {/* Left Column: Image Preview & Crop / Re-OCR Buttons */}
         <div className="md:col-span-5 space-y-4">
           <div className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 space-y-3 shadow-lg">
             <div className="flex items-center justify-between">
@@ -170,30 +274,36 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
               )}
             </div>
 
-            {/* Aadhaar Scan Quality & Image Processing Badges */}
-            <div className="pt-1 space-y-1.5 border-t border-slate-800/80">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block">
-                IMAGE PROCESSING & QUALITY PIPELINE
-              </span>
-              <div className="grid grid-cols-2 gap-1.5 text-[10px] font-semibold text-slate-300">
-                <div className="flex items-center gap-1 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>Card Detected & Cropped</span>
-                </div>
-                <div className="flex items-center gap-1 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>Perspective Corrected</span>
-                </div>
-                <div className="flex items-center gap-1 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>Real Pixel Enhanced</span>
-                </div>
-                <div className="flex items-center gap-1 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                  <span>Portrait Preserved</span>
-                </div>
-              </div>
+            {/* Crop & Re-OCR Action Buttons */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleOpenCropModal}
+                className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                id="btn-open-crop-editor"
+              >
+                <Scissors className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Edit / Crop</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isReOCRProcessing}
+                onClick={() => handleRunReOCR(frontImage)}
+                className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                id="btn-re-ocr-document"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isReOCRProcessing ? 'animate-spin' : ''}`} />
+                <span>{isReOCRProcessing ? 'Reading...' : 'Re-read OCR'}</span>
+              </button>
             </div>
+
+            {/* Re-OCR Status Notice */}
+            {reOCRNotice && (
+              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-semibold text-slate-300 animate-fade-in">
+                {reOCRNotice}
+              </div>
+            )}
           </div>
 
           {/* Next Step Banner */}
@@ -205,21 +315,21 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
               NEXT: LIVE FACE PHOTO CAPTURE
             </h3>
             <p className="text-[11px] text-slate-300">
-              After confirming document details, front camera will open for biometric verification.
+              After confirming details, proceed to live face capture and resident selection.
             </p>
           </div>
         </div>
 
-        {/* Right Column: Dynamic Form Generated Based on Document Type */}
+        {/* Right Column: Editable Dynamic Form */}
         <div className="md:col-span-7 bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
           
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <div>
               <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
                 <FileText className="w-4 h-4 text-cyan-400" />
-                <span>{currentSchema.label} Extracted Schema</span>
+                <span>{currentSchema?.label || 'Visitor Identity'} Fields</span>
               </span>
-              <p className="text-[11px] text-slate-400">Displaying fields specific to {validatedData.documentType}</p>
+              <p className="text-[11px] text-slate-400">Directly edit or fill in any missing information</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -229,7 +339,7 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
                 id="btn-toggle-privacy-modal"
               >
                 <Shield className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Privacy Controls</span>
+                <span>Privacy</span>
               </button>
 
               <button
@@ -238,48 +348,7 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
                 id="btn-toggle-raw-ocr"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                <span>{showRawOcr ? 'Hide Raw OCR' : 'Show Raw OCR'}</span>
-              </button>
-
-              <button
-                onClick={() => setIsEditing(!isEditing)}
-                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 flex items-center gap-1.5"
-                id="btn-toggle-edit-ocr"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>{isEditing ? 'Done Editing' : 'Edit Details'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Visitor Privacy Active Summary Banner */}
-          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2">
-              <Lock className="w-4 h-4 text-cyan-400" />
-              <div>
-                <span className="font-bold text-white block">Visitor Control Status</span>
-                <span className="text-[11px] text-slate-400">
-                  {(extractedData.privacyMode ? extractedData.privacyMode === 'masked' : aadhaarSettings.useMaskedAadhaar)
-                    ? `Masked ${getDocumentPrivacyConfig(validatedData.documentType).displayName} (${maskIdentityNumber(validatedData.documentType, validatedData.documentNumber)})`
-                    : `Full ${getDocumentPrivacyConfig(validatedData.documentType).displayName}`}
-                  {' • '}
-                  {Object.values(privacyPrefs).filter(v => v === 'HIDDEN').length} field(s) hidden for privacy
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsAadhaarModalOpen(true)}
-                className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded bg-cyan-950/80 border border-cyan-800 text-cyan-300 hover:text-cyan-200 cursor-pointer"
-              >
-                Document Privacy
-              </button>
-              <button
-                onClick={() => setIsPrivacyModalOpen(true)}
-                className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded bg-slate-900 border border-slate-700 text-slate-300 hover:text-white cursor-pointer"
-              >
-                Field Visibility
+                <span>{showRawOcr ? 'Hide Raw OCR' : 'Raw OCR'}</span>
               </button>
             </div>
           </div>
@@ -288,116 +357,80 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
           {showRawOcr && (
             <div className="p-3 rounded-xl bg-black border border-amber-500/40 text-amber-300 font-mono text-[11px] space-y-1">
               <div className="flex items-center justify-between text-[10px] text-slate-400 uppercase tracking-widest font-sans font-bold border-b border-slate-800 pb-1 mb-2">
-                <span>ML Kit / Engine Raw OCR Text Stream</span>
-                <span className="text-emerald-400">Exact OCR Input</span>
+                <span>OCR Text Stream</span>
+                <span className="text-emerald-400 font-sans">Raw Stream</span>
               </div>
-              <pre className="whitespace-pre-wrap break-words leading-relaxed">
-{extractedData.rawText || validatedData.rawText || (validatedData.documentType === 'PAN_CARD' ? `INCOME TAX DEPARTMENT
-GOVT OF INDIA
-PERMANENT ACCOUNT NUMBER CARD
-NAME: ${validatedData.fullName || 'Not Detected'}
-FATHER'S NAME: ${validatedData.fatherName || 'Not Detected'}
-DOB: ${validatedData.dob || 'Not Detected'}
-PAN NO: ${validatedData.documentNumber || 'Not Detected'}`
-: validatedData.documentType === 'PASSPORT' ? `REPUBLIC OF INDIA
-PASSPORT
-NAME: ${validatedData.fullName || 'Not Detected'}
-NATIONALITY: ${validatedData.nationality || 'INDIAN'}
-PASSPORT NO: ${validatedData.documentNumber || 'Not Detected'}
-DOB: ${validatedData.dob || 'Not Detected'}
-EXPIRY DATE: ${validatedData.expiryDate || 'Not Detected'}`
-: validatedData.documentType === 'DRIVING_LICENCE' ? `UNION OF INDIA - DRIVING LICENCE
-LICENCE NO: ${validatedData.documentNumber || 'Not Detected'}
-NAME: ${validatedData.fullName || 'Not Detected'}
-DOB: ${validatedData.dob || 'Not Detected'}
-VALID TILL: ${validatedData.expiryDate || 'Not Detected'}`
-: validatedData.documentType === 'VOTER_ID' ? `ELECTION COMMISSION OF INDIA
-ELECTORAL PHOTO IDENTITY CARD
-EPIC NO: ${validatedData.documentNumber || 'Not Detected'}
-NAME: ${validatedData.fullName || 'Not Detected'}
-GENDER: ${validatedData.gender || 'Not Detected'}`
-: `DOCUMENT TYPE: ${validatedData.documentType}
-NAME: ${validatedData.fullName || 'Not Detected'}
-DOCUMENT NO: ${validatedData.documentNumber || 'Not Detected'}
-DOB: ${validatedData.dob || 'Not Detected'}`)}
+              <pre className="whitespace-pre-wrap break-words leading-relaxed max-h-40 overflow-y-auto">
+                {extractedData.rawText || validatedData.rawText || 'No raw OCR stream available. You can manually enter all fields below.'}
               </pre>
             </div>
           )}
 
-          {/* Low Confidence Banner */}
-          {validatedData.lowConfidenceFields && validatedData.lowConfidenceFields.length > 0 && (
+          {/* Non-blocking Informational Notice if Fields Missing */}
+          {!isComplete && (
             <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
               <span>
-                Attention: Mismatch or format issue in: <strong>{validatedData.lowConfidenceFields.join(', ')}</strong>. Please review & edit.
+                ⚠ Some details could not be read automatically. Please review and enter them manually below.
               </span>
             </div>
           )}
 
-          {/* Dynamic Form Generation */}
+          {/* Dynamic Form Generation with Direct Editable Inputs */}
           <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
             {(currentSchema?.fields || []).map((field) => {
               const val = (validatedData as any)[field.key] || '';
+              const isManual = Boolean(extractedData.manualOverrides?.[field.key as string]);
               const fieldConf: FieldWithConfidence = validatedData.fieldConfidences?.[field.key] || {
                 value: val,
-                confidence: 96,
+                confidence: 90,
                 isValid: true,
-                errorMessage: undefined,
               };
 
               return (
                 <div key={field.key as string} className="space-y-1">
                   
-                  {/* Field Label & Confidence Badge */}
+                  {/* Field Label & Badge */}
                   <div className="flex items-center justify-between">
                     <label className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1">
                       <span>{field.label}</span>
                       {field.required && <span className="text-rose-400 font-bold">*</span>}
                     </label>
 
-                    <div className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${getConfidenceBadgeColor(fieldConf.confidence, fieldConf.isValid)}`}>
-                      {fieldConf.isValid ? `${fieldConf.confidence}% Match` : 'Invalid Format'}
+                    <div className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border flex items-center gap-1 ${getConfidenceBadgeColor(fieldConf.confidence, fieldConf.isValid, isManual)}`}>
+                      {isManual ? (
+                        <>
+                          <Check className="w-3 h-3 text-cyan-400" />
+                          <span>Manually Verified</span>
+                        </>
+                      ) : fieldConf.isValid ? (
+                        <span>{fieldConf.confidence}% Match</span>
+                      ) : (
+                        <span>Manual Entry</span>
+                      )}
                     </div>
                   </div>
 
-                  {/* Input or Display Box */}
-                  {isEditing ? (
-                    field.type === 'select' ? (
-                      <select
-                        value={val}
-                        onChange={(e) => handleFieldValueChange(field.key, e.target.value)}
-                        className={`w-full bg-slate-950 border ${!fieldConf.isValid ? 'border-rose-500 text-rose-300' : 'border-cyan-500/50 text-white'} rounded-lg px-3 py-2 text-xs font-bold focus:outline-none`}
-                      >
-                        {field.options?.map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        value={val}
-                        placeholder={field.placeholder}
-                        onChange={(e) => handleFieldValueChange(field.key, e.target.value)}
-                        className={`w-full bg-slate-950 border ${!fieldConf.isValid ? 'border-rose-500 text-rose-300' : 'border-cyan-500/50 text-white'} rounded-lg px-3 py-2 text-xs font-bold focus:outline-none`}
-                      />
-                    )
+                  {/* Input Field */}
+                  {field.type === 'select' ? (
+                    <select
+                      value={val}
+                      onChange={(e) => handleFieldValueChange(field.key, e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 focus:border-cyan-500 text-white rounded-lg px-3 py-2 text-xs font-bold focus:outline-none transition-colors"
+                    >
+                      <option value="">Select {field.label}</option>
+                      {field.options?.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
                   ) : (
-                    <div className={`p-2.5 rounded-lg bg-slate-950 border ${!fieldConf.isValid ? 'border-rose-500/50 text-rose-300' : 'border-slate-800 text-white'} text-xs font-bold flex items-center justify-between`}>
-                      <span className="truncate">{val || <span className="text-slate-600 italic">Not extracted</span>}</span>
-                      {fieldConf.isValid ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 ml-2" />
-                      ) : (
-                        <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 ml-2" />
-                      )}
-                    </div>
-                  )}
-
-                  {/* Validation Error Message */}
-                  {!fieldConf.isValid && fieldConf.errorMessage && (
-                    <p className="text-[10px] text-rose-400 font-medium flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" />
-                      <span>{fieldConf.errorMessage}</span>
-                    </p>
+                    <input
+                      type="text"
+                      value={val}
+                      placeholder={`Enter ${field.label}`}
+                      onChange={(e) => handleFieldValueChange(field.key, e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 focus:border-cyan-500 text-white rounded-lg px-3 py-2 text-xs font-bold focus:outline-none transition-colors"
+                    />
                   )}
 
                 </div>
@@ -405,27 +438,7 @@ DOB: ${validatedData.dob || 'Not Detected'}`)}
             })}
           </div>
 
-          {/* Security Gate Policy Alert Banner if Validation Failed */}
-          {!isFailClosedPass && (
-            <div className="p-3.5 rounded-xl bg-rose-950/80 border-2 border-rose-500/80 text-rose-200 text-xs space-y-1.5 shadow-xl animate-fade-in">
-              <div className="flex items-center gap-2 font-black text-rose-300 uppercase tracking-wide">
-                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>ENTRY REJECTED — FAIL-CLOSED SECURITY POLICY ENFORCED</span>
-              </div>
-              <p className="text-[11px] text-rose-200/90 leading-relaxed">
-                Required identity fields could not be verified automatically from document OCR:
-              </p>
-              <ul className="list-disc list-inside text-[11px] font-semibold text-rose-300 space-y-0.5 pl-1">
-                {!isNameValid && <li>Cardholder Name is invalid or missing</li>}
-                {!isDocNumValid && <li>Document Identification Number is invalid or unreadable</li>}
-              </ul>
-              <p className="text-[10px] text-rose-400 italic">
-                👉 Please click "Edit Details" above to fill in missing fields or click "Retake" to scan a clearer photo.
-              </p>
-            </div>
-          )}
-
-          {/* Action Buttons: Save Document & Proceed to Live Face Check */}
+          {/* Action Buttons: Save Document & Proceed - ALWAYS ENABLED */}
           <div className="pt-2 flex flex-col sm:flex-row gap-3">
             <button
               type="button"
@@ -440,31 +453,40 @@ DOB: ${validatedData.dob || 'Not Detected'}`)}
             <button
               type="button"
               onClick={onProceedToScanBack}
-              disabled={!isFailClosedPass}
-              className={`flex-1 py-3.5 rounded-xl font-extrabold text-xs shadow-xl flex items-center justify-center gap-2 uppercase tracking-wider transition-all ${
-                isFailClosedPass
-                  ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-blue-500/20 cursor-pointer'
-                  : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
-              }`}
+              className="flex-1 py-3.5 rounded-xl font-extrabold text-xs shadow-xl flex items-center justify-center gap-2 uppercase tracking-wider transition-all bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-blue-500/20 cursor-pointer active:scale-95"
               id="btn-continue-scan-back"
             >
-              {!isFailClosedPass ? (
-                <>
-                  <Lock className="w-4 h-4 text-rose-400" />
-                  <span>ENTRY LOCKED — COMPLETE REQUIRED FIELDS</span>
-                </>
-              ) : (
-                <>
-                  <span>CONFIRM DETAILS & PROCEED TO FACE CAPTURE</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
+              <span>CONFIRM DETAILS & PROCEED TO FACE CAPTURE</span>
+              <ArrowRight className="w-4 h-4" />
             </button>
           </div>
 
         </div>
 
       </div>
+
+      {/* Modal for In-Page Adobe Scan Editor */}
+      {isEditingInCropEditor && cropScannedPages.length > 0 && (
+        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md p-4 flex items-center justify-center">
+          <div className="w-full max-w-4xl h-[85vh]">
+            <AdobeScanEditor
+              pages={cropScannedPages}
+              onUpdatePages={(updated) => setCropScannedPages(updated)}
+              onAddPage={() => setIsEditingInCropEditor(false)}
+              onRetakeAll={() => setIsEditingInCropEditor(false)}
+              onConfirmScans={(finalPages) => {
+                const croppedImg = finalPages[0]?.processedImage || frontImage;
+                if (onUpdateFrontImage) {
+                  onUpdateFrontImage(croppedImg);
+                }
+                setIsEditingInCropEditor(false);
+                // Run Re-OCR automatically on newly cropped image!
+                handleRunReOCR(croppedImg);
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Save Document Modal */}
       <SaveDocumentModal

@@ -24,6 +24,7 @@ export interface Resident {
 
 export type DocumentType = 
   | 'AUTOMATIC_DETECTION'
+  | 'AADHAAR_CARD'
   | 'AADHAAR_FRONT'
   | 'AADHAAR_BACK'
   | 'PAN_CARD'
@@ -32,7 +33,9 @@ export type DocumentType =
   | 'VOTER_ID'
   | 'GOVT_EMPLOYEE_ID'
   | 'PRIVATE_EMPLOYEE_ID'
+  | 'EMPLOYEE_ID'
   | 'STUDENT_ID'
+  | 'COLLEGE_ID'
   | 'RC_BOOK'
   | 'OCI_CARD'
   | 'NREGA_JOB_CARD'
@@ -43,6 +46,7 @@ export type DocumentType =
   | 'ARMY_ID'
   | 'OTHER_GOVT_ID'
   | 'OTHER_IDENTITY_DOC'
+  | 'OTHER'
   | 'VISITOR_PASS'
   | 'UNKNOWN';
 
@@ -170,6 +174,15 @@ export interface ExtractedDocData {
 
   // Detailed per-field confidence map
   fieldConfidences?: Record<string, FieldWithConfidence>;
+
+  // Manual override tracking
+  manualOverrides?: Record<string, boolean>;
+  ocrStatus?: 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'MANUAL';
+
+  // Generated Document PDF
+  pdfDataUri?: string;
+  pdfFileName?: string;
+  pagesCount?: number;
 }
 
 export interface FaceVerificationData {
@@ -206,6 +219,8 @@ export interface VisitorRecord {
   documentNumber: string;
   frontDocUrl: string;
   backDocUrl?: string;
+  pdfDocUrl?: string;
+  pdfFileName?: string;
   liveFaceUrl: string;
   extractedData: ExtractedDocData;
   faceMetrics: FaceVerificationData;
