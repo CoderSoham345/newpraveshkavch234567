@@ -120,7 +120,7 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
           }
         });
         
-        merged.confidenceScore = ocrResult.confidenceScore || 85;
+        merged.confidenceScore = ocrResult.confidenceScore || 0;
         merged.ocrStatus = 'SUCCESS';
         
         const revalidated = validateAndComputeFieldConfidences(merged);

@@ -411,7 +411,7 @@ export class MLKitOCREngine {
         return {
           rawText: ext.rawText || '',
           fields,
-          overallConfidence: ext.confidenceScore || 85,
+          overallConfidence: ext.confidenceScore || 0,
           warnings: [],
           documentType: ext.documentType || 'Aadhaar Card',
         };

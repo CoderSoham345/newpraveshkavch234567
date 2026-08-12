@@ -210,7 +210,7 @@ export function extractFieldsFromRawText(rawText: string, targetDocType: Documen
     fullName: '',
     documentNumber: '',
     documentType: targetDocType,
-    confidenceScore: 90,
+    confidenceScore: 0,
     lowConfidenceFields: [],
   };
 
@@ -423,7 +423,7 @@ export function extractFieldsFromRawText(rawText: string, targetDocType: Documen
 
 function calculateAverageConfidence(fieldConfidences: Record<string, FieldWithConfidence>): number {
   const vals = Object.values(fieldConfidences);
-  if (vals.length === 0) return 90;
+  if (vals.length === 0) return 0;
   const sum = vals.reduce((acc, curr) => acc + curr.confidence, 0);
   return Math.round(sum / vals.length);
 }

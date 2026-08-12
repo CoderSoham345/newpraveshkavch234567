@@ -195,7 +195,7 @@ async function saveScanDocumentEntry(visitor: VisitorRecord, payload: SaveVisito
       processedImageUrl: visitor.frontDocUrl,
       fileUrl: visitor.frontDocUrl,
       extractedData: visitor.extractedData,
-      ocrConfidence: visitor.extractedData?.confidenceScore || 98,
+      ocrConfidence: visitor.extractedData?.confidenceScore || 0,
       createdAt: visitor.createdAt,
       fileSizeBytes: 245000, // ~245 KB
       dimensions: { width: 1280, height: 800 },

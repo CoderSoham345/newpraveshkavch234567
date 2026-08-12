@@ -125,14 +125,14 @@ export function SecurityGuardWorkflow() {
     };
   };
   const [faceMetrics, setFaceMetrics] = useState<FaceVerificationData>({
-    faceDetected: true,
-    qualityScore: 96,
-    brightness: 92,
-    sharpness: 94,
-    framingPass: true,
-    livenessPassed: true,
+    faceDetected: false,
+    qualityScore: 0,
+    brightness: 0,
+    sharpness: 0,
+    framingPass: false,
+    livenessPassed: false,
     maskDetected: false,
-    faceMatchScore: 98,
+    faceMatchScore: 0,
   });
 
   const [selectedResidentId, setSelectedResidentId] = useState<string>('');

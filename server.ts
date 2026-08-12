@@ -2603,17 +2603,17 @@ if (buildingsStore.length === 0) {
   );
 }
 
-// Populate sample residents if empty
+// Populate initial system residents if empty
 if (residentsStore.length === 0) {
   residentsStore.push(
     {
       id: 'resident-1',
-      name: 'Soham Gonbhare',
+      name: 'Vikram Mehta',
       building: 'Tower A',
       flatNumber: 'A-702',
       department: 'Engineering',
       phone: '+91 98765 43210',
-      email: 'soham@example.com',
+      email: 'vikram.mehta@example.com',
       autoApproveGuests: false,
     },
     {
@@ -2623,7 +2623,7 @@ if (residentsStore.length === 0) {
       flatNumber: 'A-301',
       department: 'Management',
       phone: '+91 99876 54321',
-      email: 'rajesh@example.com',
+      email: 'rajesh.sharma@example.com',
       autoApproveGuests: true,
     },
     {
@@ -2633,157 +2633,28 @@ if (residentsStore.length === 0) {
       flatNumber: 'B-405',
       department: 'Finance',
       phone: '+91 97654 32109',
-      email: 'priya@example.com',
+      email: 'priya.patel@example.com',
       autoApproveGuests: false,
     }
   );
 }
 
-// Populate sample visitors if empty
-if (visitorsStore.length === 0) {
+// Visitors store starts clean without hardcoded sample visitors
+// Real visitor registrations are recorded directly when created via workflow or API
+
+// Seed initial system audit logs if empty
+if (auditLogsStore.length === 0) {
   const now = new Date();
   const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
-  const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000).toISOString();
-  const thirtyMinsAgo = new Date(now.getTime() - 30 * 60 * 1000).toISOString();
 
-  visitorsStore.push(
-    {
-      id: 'vis-sample-1',
-      passNumber: 'PK-9821',
-      visitorName: 'Aarav Sharma',
-      phone: '+91 98765 11111',
-      documentType: 'PAN_CARD',
-      documentNumber: 'ABCPS1234F',
-      frontDocUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400',
-      liveFaceUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200',
-      extractedData: {
-        fullName: 'AARAV SHARMA',
-        documentNumber: 'ABCPS1234F',
-        documentType: 'PAN_CARD',
-        confidenceScore: 98,
-        lowConfidenceFields: [],
-      },
-      faceMetrics: {
-        faceDetected: true,
-        qualityScore: 98,
-        brightness: 92,
-        sharpness: 95,
-        framingPass: true,
-        livenessPassed: true,
-        maskDetected: false,
-        faceMatchScore: 98,
-      },
-      residentId: 'resident-1',
-      residentName: 'Soham Gonbhare',
-      buildingUnit: 'Tower A - A-702',
-      purpose: 'Guest / Personal Visit',
-      status: 'CHECKED_IN',
-      createdAt: oneHourAgo,
-      approvedAt: oneHourAgo,
-      checkInAt: oneHourAgo,
-      gateName: 'Main Gate 01',
-      guardName: 'Rajesh Security Guard',
-      qrCodeValue: 'PK-9821-AARAV',
-    },
-    {
-      id: 'vis-sample-2',
-      passNumber: 'PK-9822',
-      visitorName: 'Neha Verma',
-      phone: '+91 98765 22222',
-      documentType: 'AADHAAR_FRONT',
-      documentNumber: '5482 1111 2222',
-      frontDocUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400',
-      liveFaceUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200',
-      extractedData: {
-        fullName: 'NEHA VERMA',
-        documentNumber: '5482 1111 2222',
-        documentType: 'AADHAAR_FRONT',
-        confidenceScore: 99,
-        lowConfidenceFields: [],
-      },
-      faceMetrics: {
-        faceDetected: true,
-        qualityScore: 96,
-        brightness: 90,
-        sharpness: 94,
-        framingPass: true,
-        livenessPassed: true,
-        maskDetected: false,
-        faceMatchScore: 97,
-      },
-      residentId: 'resident-2',
-      residentName: 'Rajesh Sharma',
-      buildingUnit: 'Tower A - A-301',
-      purpose: 'Amazon Package Delivery',
-      status: 'CHECKED_OUT',
-      createdAt: threeHoursAgo,
-      approvedAt: threeHoursAgo,
-      checkInAt: threeHoursAgo,
-      checkOutAt: oneHourAgo,
-      visitDuration: '2h 0m',
-      gateName: 'Main Gate 01',
-      guardName: 'Rajesh Security Guard',
-      qrCodeValue: 'PK-9822-NEHA',
-    },
-    {
-      id: 'vis-sample-3',
-      passNumber: 'PK-9823',
-      visitorName: 'Vikram Malhotra',
-      phone: '+91 98765 33333',
-      documentType: 'DRIVING_LICENCE',
-      documentNumber: 'DL-0420110012345',
-      frontDocUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=400',
-      liveFaceUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200',
-      extractedData: {
-        fullName: 'VIKRAM MALHOTRA',
-        documentNumber: 'DL-0420110012345',
-        documentType: 'DRIVING_LICENCE',
-        confidenceScore: 97,
-        lowConfidenceFields: [],
-      },
-      faceMetrics: {
-        faceDetected: true,
-        qualityScore: 95,
-        brightness: 88,
-        sharpness: 92,
-        framingPass: true,
-        livenessPassed: true,
-        maskDetected: false,
-        faceMatchScore: 96,
-      },
-      residentId: 'resident-3',
-      residentName: 'Priya Patel',
-      buildingUnit: 'Tower B - B-405',
-      purpose: 'AC Maintenance Repair',
-      status: 'APPROVED',
-      createdAt: thirtyMinsAgo,
-      approvedAt: thirtyMinsAgo,
-      gateName: 'Main Gate 01',
-      guardName: 'Rajesh Security Guard',
-      qrCodeValue: 'PK-9823-VIKRAM',
-    }
-  );
-
-  // Seed sample audit logs
   auditLogsStore.push(
     {
       id: `log-seed-1`,
       timestamp: oneHourAgo,
-      action: 'VISITOR_CHECKED_IN',
-      performedBy: 'Rajesh Security Guard',
-      role: 'SECURITY_GUARD',
-      details: 'Visitor Aarav Sharma checked in at Main Gate 01',
-      gateName: 'Main Gate 01',
-      deviceName: 'Security Gate Workstation',
-      ipAddress: '127.0.0.1',
-    },
-    {
-      id: `log-seed-2`,
-      timestamp: oneHourAgo,
-      action: 'VISITOR_EXIT',
-      performedBy: 'Rajesh Security Guard',
-      role: 'SECURITY_GUARD',
-      details: 'Visitor Exit completed for Neha Verma (PK-9822). Visit duration: 2h 0m',
+      action: 'SYSTEM_BOOT',
+      performedBy: 'System Administrator',
+      role: 'ADMIN',
+      details: 'PraveshKavach Gate Security System initialized',
       gateName: 'Main Gate 01',
       deviceName: 'Security Gate Workstation',
       ipAddress: '127.0.0.1',

@@ -176,7 +176,7 @@ export const Step6Summary: React.FC<Step6SummaryProps> = ({
         {/* Live Face Photo */}
         <div className="space-y-1">
           <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider block">
-            Live Photo (Face Match {faceMetrics.faceMatchScore}%)
+            Live Photo {faceMetrics.faceMatchScore > 0 ? `(Match ${faceMetrics.faceMatchScore}%)` : '(Captured)'}
           </span>
           <div className="rounded-xl overflow-hidden border-2 border-cyan-400/80 aspect-[1.586/1] bg-black">
             <img src={liveFaceUrl} alt="Live Face" className="w-full h-full object-cover" />
