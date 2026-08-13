@@ -1327,12 +1327,14 @@ Extract ALL visible text from top to bottom into rawText. Do not truncate, omit,
 CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
 1. Identify PRIMARY CARDHOLDER FULL NAME (fullName):
    - Locate the main cardholder's name printed in English and Hindi.
-   - DO NOT confuse father's name (S/O, D/O, W/O), mother's name, or officer/government header text with fullName.
+   - For PAN Cards: The cardholder's name is printed below the 'Name' label and directly ABOVE the 'Father\'s Name' label.
+   - DO NOT confuse father's name (S/O, D/O, W/O), mother's name, or officer/government header text (such as 'INCOME TAX DEPARTMENT', 'GOVT OF INDIA', 'AAYAKAR VIBHAG', 'ARA AVOR') with fullName.
+   - If cardholder's name is not explicitly readable, return null for fullName. NEVER guess or invent names.
 2. Identify RELATIONSHIP / FATHER'S / SPOUSE NAME (fatherName):
-   - Look for "S/O", "D/O", "W/O", "C/O", "Father:", "Husband:".
+   - Look for "S/O", "D/O", "W/O", "C/O", "Father:", "Husband:", or Father's Name label on PAN card.
 3. Extract DOB (dob) in DD/MM/YYYY or YEAR OF BIRTH (yearOfBirth) in YYYY if only year is visible.
 4. Extract GENDER (gender): "Male", "Female", or "Transgender".
-5. Extract AADHAAR / ID NUMBER (documentNumber): 12 digits (e.g. 1234 5678 9012) or 12-digit masked format.
+5. Extract AADHAAR / ID NUMBER (documentNumber): 12 digits (e.g. 1234 5678 9012) or 12-digit masked format, or 10-char PAN (ABCDE1234F).
 6. Extract MULTILINE ADDRESS (address), DISTRICT (district), STATE (state), and 6-digit PIN CODE (pinCode).
 7. PORTRAIT DETECTION (portraitDetected): Set to true if a printed photo/portrait of the individual is present on the card.
 8. Return null for any field not visibly present on the card - NEVER invent or hallucinate data.`;
@@ -1465,34 +1467,60 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
         'GOVERNMENT OF INDIA',
         'BHARAT SARKAR',
         'AAYAKAR VIBHAG',
+        'AAYAKAR VIBHAC',
+        'AAYAKAR',
+        'VIBHAG',
+        'ARA AVOR',
+        'AAR AVOR',
+        'ARA',
+        'AVOR',
         'PERMANENT ACCOUNT NUMBER CARD',
         'PERMANENT ACCOUNT NUMBER',
         'PERMANENT',
         'ACCOUNT',
+        'NUMBER',
         'DEPARTMENT',
-        'CARD HOLDER\'S SIGNATURE',
         'SIGNATURE',
+        'CARD HOLDER\'S SIGNATURE',
+        'CARD HOLDERS SIGNATURE',
+        'CARDHOLDER',
         'INDIA',
+        'INDIAN',
+        'UNION OF INDIA',
+        'REPUBLIC OF INDIA',
         'NAME',
         'FATHER\'S NAME',
+        'FATHER NAME',
+        'FATHERS NAME',
         'DATE OF BIRTH',
         'DOB',
+        'BIRTH',
+        'PHOTO',
+        'HOLDER',
       ];
       return blacklisted.some((token) => u === token || u.includes(token));
     };
 
     if (isHeaderLabel(extractedFullName)) {
-      console.warn('[v0] Filtered blacklisted header label from fullName:', extractedFullName);
+      console.warn('[v0] Filtered blacklisted header label or noise from fullName:', extractedFullName);
       extractedFullName = ruleBasedResult.extractedData.fullName && !isHeaderLabel(ruleBasedResult.extractedData.fullName)
         ? ruleBasedResult.extractedData.fullName
         : '';
     }
 
     if (isHeaderLabel(extractedFatherName)) {
-      console.warn('[v0] Filtered blacklisted header label from fatherName:', extractedFatherName);
+      console.warn('[v0] Filtered blacklisted header label or noise from fatherName:', extractedFatherName);
       extractedFatherName = ruleBasedResult.extractedData.fatherName && !isHeaderLabel(ruleBasedResult.extractedData.fatherName)
         ? ruleBasedResult.extractedData.fatherName
         : '';
+    }
+
+    // Ensure fullName and fatherName are not identical
+    if (extractedFullName && extractedFatherName && extractedFullName.trim().toUpperCase() === extractedFatherName.trim().toUpperCase()) {
+      console.warn('[v0] fullName and fatherName were identical. Checking rule-based extraction...');
+      if (ruleBasedResult.extractedData.fullName && ruleBasedResult.extractedData.fullName.trim().toUpperCase() !== extractedFatherName.trim().toUpperCase() && !isHeaderLabel(ruleBasedResult.extractedData.fullName)) {
+        extractedFullName = ruleBasedResult.extractedData.fullName;
+      }
     }
 
     // Ensure PAN Card number matches exact 10-character PAN format
@@ -1578,6 +1606,19 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
       rawText: geminiParsedData?.rawText || rawOCRText || (geminiParsedData ? `DOCUMENT TYPE: ${finalTargetType}\nNAME: ${extractedFullName}\nDOC NO: ${extractedDocNum}\nDOB: ${geminiParsedData.dob || ''}\nGENDER: ${geminiParsedData.gender || ''}\nFATHER NAME: ${geminiParsedData.fatherName || ''}\nADDRESS: ${geminiParsedData.address || ''}\nPIN CODE: ${geminiParsedData.pinCode || ''}` : ''),
       confidenceScore: calculatedConfidence,
       lowConfidenceFields: lowFields,
+      developerLogs: {
+        rawOCRText: rawOCRText || geminiParsedData?.rawText || '',
+        opticalCorrections: ruleBasedResult.developerLogs.opticalCorrections,
+        fieldConfidences: ruleBasedResult.developerLogs.fieldConfidences,
+        validationResults: ruleBasedResult.developerLogs.validationResults,
+        regexMatches: ruleBasedResult.developerLogs.regexMatches,
+        evidence: {
+          documentNumber: ruleBasedResult.developerLogs.regexMatches['documentNumber'] || extractedDocNum || null,
+          fullName: ruleBasedResult.developerLogs.regexMatches['fullName'] || (extractedFullName && !isHeaderLabel(extractedFullName) ? extractedFullName : null),
+          fatherName: ruleBasedResult.developerLogs.regexMatches['fatherName'] || extractedFatherName || null,
+          dob: ruleBasedResult.developerLogs.regexMatches['dob'] || ruleBasedResult.extractedData.dob || null,
+        }
+      }
     };
 
     const totalTime = Date.now() - startTime;

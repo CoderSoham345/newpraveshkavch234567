@@ -262,7 +262,7 @@ export function extractFieldsFromRawText(rawText: string, targetDocType: Documen
       data.panType = 'Individual';
     }
 
-    // Comprehensive Blacklist for PAN Header Strings & Field Labels
+    // Comprehensive Blacklist for PAN Header Strings & Field Labels & Watermark Noise
     const isPanBlacklisted = (lineStr: string): boolean => {
       const u = lineStr.trim().toUpperCase();
       if (u.length < 2) return true;
@@ -277,6 +277,13 @@ export function extractFieldsFromRawText(rawText: string, targetDocType: Documen
         'GOVERNMENT',
         'BHARAT SARKAR',
         'AAYAKAR VIBHAG',
+        'AAYAKAR VIBHAC',
+        'AAYAKAR',
+        'VIBHAG',
+        'ARA AVOR',
+        'AAR AVOR',
+        'ARA',
+        'AVOR',
         'PERMANENT ACCOUNT NUMBER CARD',
         'PERMANENT ACCOUNT NUMBER',
         'PERMANENT',
@@ -286,7 +293,11 @@ export function extractFieldsFromRawText(rawText: string, targetDocType: Documen
         'SIGNATURE',
         'CARD HOLDER\'S SIGNATURE',
         'CARD HOLDERS SIGNATURE',
+        'CARDHOLDER',
         'INDIA',
+        'INDIAN',
+        'UNION OF INDIA',
+        'REPUBLIC OF INDIA',
         'CARD',
         'NAME',
         'FATHER\'S NAME',
@@ -295,47 +306,85 @@ export function extractFieldsFromRawText(rawText: string, targetDocType: Documen
         'DATE OF BIRTH',
         'DOB',
         'BIRTH',
+        'PHOTO',
+        'HOLDER',
       ];
       return blacklistedTokens.some((token) => u === token || u.includes(token));
     };
 
-    // Label-relative line extraction first
+    // 1. Label-relative line extraction (NAME & FATHER'S NAME)
     for (let i = 0; i < lines.length; i++) {
       const lineUpper = lines[i].toUpperCase().trim();
-      if ((lineUpper === 'NAME' || lineUpper.startsWith('NAME/') || lineUpper.startsWith('NAME /')) && i + 1 < lines.length) {
-        const nextLine = lines[i + 1].trim();
-        if (!isPanBlacklisted(nextLine) && /^[A-Z\s\.\'-]{2,50}$/i.test(nextLine)) {
-          data.fullName = nextLine;
-          logs.regexMatches['fullName'] = nextLine;
+      
+      // Explicit Name Label
+      if ((lineUpper === 'NAME' || lineUpper.startsWith('NAME/') || lineUpper.startsWith('NAME /') || lineUpper.includes('नाम')) && i + 1 < lines.length) {
+        // Check next line or line after
+        for (let k = 1; k <= 2; k++) {
+          if (i + k < lines.length) {
+            const candidate = lines[i + k].trim();
+            if (!isPanBlacklisted(candidate) && /^[A-Z\s\.\'-]{3,50}$/i.test(candidate)) {
+              data.fullName = candidate;
+              logs.regexMatches['fullName'] = candidate;
+              break;
+            }
+          }
         }
       }
 
-      if ((lineUpper.includes('FATHER') || lineUpper.includes('PARENT')) && i + 1 < lines.length) {
-        const nextLine = lines[i + 1].trim();
-        if (!isPanBlacklisted(nextLine) && /^[A-Z\s\.\'-]{2,50}$/i.test(nextLine)) {
-          data.fatherName = nextLine;
-          logs.regexMatches['fatherName'] = nextLine;
+      // Explicit Father's Name Label
+      if ((lineUpper.includes('FATHER') || lineUpper.includes('PARENT') || lineUpper.includes('पिता')) && i + 1 < lines.length) {
+        for (let k = 1; k <= 2; k++) {
+          if (i + k < lines.length) {
+            const candidate = lines[i + k].trim();
+            if (!isPanBlacklisted(candidate) && /^[A-Z\s\.\'-]{3,50}$/i.test(candidate)) {
+              data.fatherName = candidate;
+              logs.regexMatches['fatherName'] = candidate;
+              break;
+            }
+          }
         }
       }
     }
 
-    // Fallback candidate lines filtering if not found by explicit label
+    // 2. Relative Layout Rule: On PAN cards, Cardholder Name is ALWAYS on the line directly ABOVE Father's Name
+    if (data.fatherName && !data.fullName) {
+      const fatherIdx = lines.findIndex(l => l.trim().toUpperCase() === data.fatherName?.toUpperCase());
+      if (fatherIdx > 0) {
+        // Scan upwards from father's name line
+        for (let j = fatherIdx - 1; j >= 0; j--) {
+          const lineUpper = lines[j].toUpperCase().trim();
+          if (lineUpper.includes('FATHER') || lineUpper.includes('NAME') || lineUpper.includes('PAN')) {
+            continue; // Skip label lines
+          }
+          if (!isPanBlacklisted(lines[j]) && /^[A-Z\s\.\'-]{3,50}$/i.test(lines[j])) {
+            data.fullName = lines[j].trim();
+            logs.regexMatches['fullName'] = lines[j].trim();
+            break;
+          }
+        }
+      }
+    }
+
+    // 3. Fallback candidate lines filtering if not found by explicit label or layout position
     if (!data.fullName || !data.fatherName) {
       const candidateLines = lines.filter((line) => {
         return !isPanBlacklisted(line) && /^[A-Z\s\.\'-]{3,50}$/i.test(line);
       });
 
       if (!data.fullName && candidateLines.length > 0) {
-        data.fullName = candidateLines[0].trim();
-        logs.regexMatches['fullName'] = candidateLines[0];
+        // Ensure candidate is not equal to father's name
+        const validCand = candidateLines.find(c => c.trim().toUpperCase() !== data.fatherName?.toUpperCase());
+        if (validCand) {
+          data.fullName = validCand.trim();
+          logs.regexMatches['fullName'] = validCand.trim();
+        }
       }
+
       if (!data.fatherName && candidateLines.length > 1) {
-        if (candidateLines[1].trim() !== data.fullName) {
-          data.fatherName = candidateLines[1].trim();
-          logs.regexMatches['fatherName'] = candidateLines[1];
-        } else if (candidateLines.length > 2) {
-          data.fatherName = candidateLines[2].trim();
-          logs.regexMatches['fatherName'] = candidateLines[2];
+        const validFatherCand = candidateLines.find(c => c.trim().toUpperCase() !== data.fullName?.toUpperCase());
+        if (validFatherCand) {
+          data.fatherName = validFatherCand.trim();
+          logs.regexMatches['fatherName'] = validFatherCand.trim();
         }
       }
     }

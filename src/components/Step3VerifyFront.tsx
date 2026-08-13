@@ -392,22 +392,42 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
 
               {/* Raw Text Stream */}
               <div className="space-y-1">
-                <div className="text-[10px] text-slate-400 uppercase tracking-wider font-sans font-bold">RAW OCR TEXT STREAM:</div>
-                <pre className="whitespace-pre-wrap break-words leading-relaxed max-h-36 overflow-y-auto p-2.5 bg-black rounded border border-amber-500/20 text-amber-200 text-[11px]">
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider font-sans font-bold flex items-center justify-between">
+                  <span>RAW OCR TEXT:</span>
+                  <span className="text-cyan-400 font-mono text-[9px]">RAW OCR STREAM</span>
+                </div>
+                <pre className="whitespace-pre-wrap break-words leading-relaxed max-h-32 overflow-y-auto p-2.5 bg-black rounded border border-amber-500/20 text-amber-200 text-[11px]">
                   {extractedData.rawText || validatedData.rawText || 'No raw OCR stream detected yet. Click "Re-read OCR" or crop image to extract.'}
                 </pre>
               </div>
 
-              {/* Extracted Key Fields */}
-              <div className="space-y-1">
-                <div className="text-[10px] text-slate-400 uppercase tracking-wider font-sans font-bold">PARSED FIELDS RESULT:</div>
-                <div className="grid grid-cols-2 gap-1.5 p-2 bg-slate-900 rounded border border-slate-800 text-[10px]">
-                  <div><span className="text-cyan-400">Name:</span> {validatedData.fullName || '—'}</div>
-                  <div><span className="text-cyan-400">Doc Number:</span> {validatedData.documentNumber || '—'}</div>
-                  <div><span className="text-cyan-400">DOB:</span> {validatedData.dob || '—'}</div>
-                  <div><span className="text-cyan-400">Gender:</span> {validatedData.gender || '—'}</div>
-                  <div><span className="text-cyan-400">Address:</span> {validatedData.address ? `${validatedData.address.substring(0, 20)}...` : '—'}</div>
-                  <div><span className="text-cyan-400">PIN Code:</span> {validatedData.pinCode || '—'}</div>
+              {/* Field Evidence Mapping Trace */}
+              <div className="space-y-1.5 pt-1 border-t border-slate-800">
+                <div className="text-[10px] text-amber-400 uppercase tracking-wider font-sans font-bold flex items-center gap-1">
+                  <span>PAN FIELD EVIDENCE</span>
+                  <span className="text-slate-500 text-[9px] font-mono font-normal">(EXACT OCR REASONING)</span>
+                </div>
+                <div className="space-y-1.5 p-2 bg-slate-900/90 rounded border border-slate-800 text-[11px] font-mono">
+                  <div>
+                    <span className="text-slate-400 block font-sans text-[9px] uppercase font-bold">PAN NUMBER:</span>
+                    <span className="text-emerald-300 font-bold">{validatedData.documentNumber || '[ Could not read automatically ]'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-sans text-[9px] uppercase font-bold">FULL NAME:</span>
+                    <span className={extractedData.manualOverrides?.fullName ? 'text-cyan-300 font-bold' : validatedData.fullName ? 'text-emerald-300 font-bold' : 'text-rose-400 italic font-sans'}>
+                      {extractedData.manualOverrides?.fullName
+                        ? `${validatedData.fullName} (Manual Entry)`
+                        : validatedData.fullName || '[ Could not read automatically - Enter manually ]'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-sans text-[9px] uppercase font-bold">FATHER'S NAME:</span>
+                    <span className="text-emerald-300 font-bold">{validatedData.fatherName || '[ Could not read automatically ]'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-sans text-[9px] uppercase font-bold">DATE OF BIRTH:</span>
+                    <span className="text-emerald-300 font-bold">{validatedData.dob || '[ Could not read automatically ]'}</span>
+                  </div>
                 </div>
               </div>
             </div>
