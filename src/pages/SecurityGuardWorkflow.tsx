@@ -311,7 +311,11 @@ export function SecurityGuardWorkflow() {
   };
 
   const handleProceedToFaceCheck = () => {
-    setCurrentStep(5);
+    if (selectedDocType === 'AADHAAR_CARD' && !backDocImage) {
+      setCurrentStep(4);
+    } else {
+      setCurrentStep(5);
+    }
   };
 
   const handleFaceCaptureCompleted = async (faceUrl: string, metrics: FaceVerificationData) => {

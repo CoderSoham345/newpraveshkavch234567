@@ -1274,15 +1274,17 @@ app.get('/api/health', (req, res) => {
 });
 
 // Enterprise OCR Endpoint using Multi-Pass Gemini AI Vision & Optical Confusion Repair Pipeline
-app.post('/api/ocr', async (req, res) => {
+const handleOCRRequest = async (req: express.Request, res: express.Response) => {
   const startTime = Date.now();
   console.log('[v0] ===== PraveshKavach™ Multi-Pass OCR Engine START =====');
 
   try {
-    const { imageBase64, side, docType } = req.body;
+    const imageBase64 = req.body.imageBase64 || req.body.image || req.body.documentImage;
+    const docType = req.body.docType || req.body.documentType;
+    const side = req.body.side || 'front';
 
     if (!imageBase64) {
-      return res.status(400).json({ success: false, error: 'imageBase64 field is required' });
+      return res.status(400).json({ success: false, error: 'imageBase64 or image field is required' });
     }
 
     // Extract exact MIME type and clean Base64
@@ -1545,6 +1547,17 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
 
     return res.json({
       success: true,
+      documentType: finalTargetType,
+      rawText: mergedData.rawText || rawOCRText || '',
+      fields: {
+        fullName: mergedData.fullName || null,
+        dateOfBirth: mergedData.dob || null,
+        gender: mergedData.gender || null,
+        documentNumber: mergedData.documentNumber || null,
+        address: mergedData.address || null,
+        fatherName: mergedData.fatherName || null,
+        pinCode: mergedData.pinCode || null,
+      },
       documentClassification: {
         documentType: finalTargetType,
         confidence: mergedData.confidenceScore,
@@ -1553,7 +1566,7 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
       },
       extractedData: mergedData,
       developerLogs: {
-        rawOCRText,
+        rawOCRText: mergedData.rawText || rawOCRText || '',
         opticalCorrections: ruleBasedResult.developerLogs.opticalCorrections,
         fieldConfidences: ruleBasedResult.developerLogs.fieldConfidences,
         validationResults: ruleBasedResult.developerLogs.validationResults,
@@ -1575,6 +1588,17 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
       success: false,
       error: 'OCR processing failed',
       message: err.message,
+      documentType: 'UNKNOWN',
+      rawText: '',
+      fields: {
+        fullName: null,
+        dateOfBirth: null,
+        gender: null,
+        documentNumber: null,
+        address: null,
+        fatherName: null,
+        pinCode: null,
+      },
       extractedData: {
         documentType: 'UNKNOWN',
         confidenceScore: 0,
@@ -1587,7 +1611,10 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
       source: 'ERROR_RECOVERY',
     });
   }
-});
+};
+
+app.post('/api/ocr', handleOCRRequest);
+app.post('/api/document/ocr', handleOCRRequest);
 
 // Helper: Classify document from OCR text using detectDocumentType logic
 function classifyDocumentFromOCR(text: string, hintSide?: 'front' | 'back'): any {
