@@ -448,12 +448,23 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
                       {isManual ? (
                         <>
                           <Check className="w-3 h-3 text-cyan-400" />
-                          <span>Manually Verified</span>
+                          <span>MANUALLY VERIFIED</span>
                         </>
-                      ) : fieldConf.isValid ? (
-                        <span>{fieldConf.confidence}% Match</span>
+                      ) : fieldConf.isValid && val ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-400" />
+                          <span>OCR READ</span>
+                        </>
+                      ) : val ? (
+                        <>
+                          <AlertTriangle className="w-3 h-3 text-amber-400" />
+                          <span>OCR UNCERTAIN</span>
+                        </>
                       ) : (
-                        <span>Manual Entry</span>
+                        <>
+                          <AlertTriangle className="w-3 h-3 text-rose-400" />
+                          <span>MANUAL ENTRY</span>
+                        </>
                       )}
                     </div>
                   </div>

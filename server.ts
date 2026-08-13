@@ -1448,8 +1448,60 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
     const ruleBasedResult = extractFieldsFromRawText(rawOCRText, finalTargetType);
 
     // Merge Gemini Multimodal Data with Rule-Based Extraction
-    const extractedFullName = geminiParsedData?.fullName || ruleBasedResult.extractedData.fullName || '';
-    const extractedDocNum = geminiParsedData?.documentNumber || ruleBasedResult.extractedData.documentNumber || '';
+    let extractedFullName = geminiParsedData?.fullName || ruleBasedResult.extractedData.fullName || '';
+    let extractedDocNum = geminiParsedData?.documentNumber || ruleBasedResult.extractedData.documentNumber || '';
+    let extractedFatherName = geminiParsedData?.fatherName || ruleBasedResult.extractedData.fatherName || '';
+
+    // Sanitize fields: Ensure header labels and blacklisted strings NEVER become user names or doc numbers
+    const isHeaderLabel = (str: string): boolean => {
+      if (!str) return true;
+      const u = str.trim().toUpperCase();
+      if (u.length < 2) return true;
+      const blacklisted = [
+        'INCOME TAX DEPARTMENT',
+        'INCOME TAX',
+        'GOVT. OF INDIA',
+        'GOVT OF INDIA',
+        'GOVERNMENT OF INDIA',
+        'BHARAT SARKAR',
+        'AAYAKAR VIBHAG',
+        'PERMANENT ACCOUNT NUMBER CARD',
+        'PERMANENT ACCOUNT NUMBER',
+        'PERMANENT',
+        'ACCOUNT',
+        'DEPARTMENT',
+        'CARD HOLDER\'S SIGNATURE',
+        'SIGNATURE',
+        'INDIA',
+        'NAME',
+        'FATHER\'S NAME',
+        'DATE OF BIRTH',
+        'DOB',
+      ];
+      return blacklisted.some((token) => u === token || u.includes(token));
+    };
+
+    if (isHeaderLabel(extractedFullName)) {
+      console.warn('[v0] Filtered blacklisted header label from fullName:', extractedFullName);
+      extractedFullName = ruleBasedResult.extractedData.fullName && !isHeaderLabel(ruleBasedResult.extractedData.fullName)
+        ? ruleBasedResult.extractedData.fullName
+        : '';
+    }
+
+    if (isHeaderLabel(extractedFatherName)) {
+      console.warn('[v0] Filtered blacklisted header label from fatherName:', extractedFatherName);
+      extractedFatherName = ruleBasedResult.extractedData.fatherName && !isHeaderLabel(ruleBasedResult.extractedData.fatherName)
+        ? ruleBasedResult.extractedData.fatherName
+        : '';
+    }
+
+    // Ensure PAN Card number matches exact 10-character PAN format
+    if (finalTargetType === 'PAN_CARD' && extractedDocNum && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(extractedDocNum.trim().toUpperCase())) {
+      console.warn('[v0] Invalid PAN number format rejected:', extractedDocNum);
+      extractedDocNum = ruleBasedResult.extractedData.documentNumber && /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(ruleBasedResult.extractedData.documentNumber)
+        ? ruleBasedResult.extractedData.documentNumber
+        : '';
+    }
 
     // Check if any visible text or extracted fields exist
     const hasAnyContent = Boolean(
@@ -1506,7 +1558,7 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
       dob: normalizeDate(geminiParsedData?.dob || ruleBasedResult.extractedData.dob).formattedDate,
       gender: geminiParsedData?.gender || ruleBasedResult.extractedData.gender || '',
       yearOfBirth: geminiParsedData?.yearOfBirth || ruleBasedResult.extractedData.yearOfBirth || '',
-      fatherName: geminiParsedData?.fatherName || ruleBasedResult.extractedData.fatherName || '',
+      fatherName: extractedFatherName || ruleBasedResult.extractedData.fatherName || '',
       address: geminiParsedData?.address || ruleBasedResult.extractedData.address || '',
       district: geminiParsedData?.district || ruleBasedResult.extractedData.district || '',
       state: geminiParsedData?.state || ruleBasedResult.extractedData.state || '',

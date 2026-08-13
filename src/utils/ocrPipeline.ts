@@ -234,7 +234,7 @@ export function extractFieldsFromRawText(rawText: string, targetDocType: Documen
   if (targetDocType === 'PAN_CARD' || upperText.includes('INCOME TAX') || /[A-Z]{5}[0-9]{4}[A-Z]/.test(upperText)) {
     data.documentType = 'PAN_CARD';
 
-    // Regex for PAN
+    // Regex for PAN Number
     let panMatch = upperText.match(/\b([A-Z]{5}[0-9]{4}[A-Z])\b/);
     if (!panMatch) {
       // Try optical repair match
@@ -245,13 +245,14 @@ export function extractFieldsFromRawText(rawText: string, targetDocType: Documen
           if (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(repaired)) {
             data.documentNumber = repaired;
             logs.opticalCorrections.push(`Repaired raw candidate '${candidate}' to PAN '${repaired}'`);
+            logs.regexMatches['documentNumber'] = candidate;
             break;
           }
         }
       }
     } else {
       data.documentNumber = panMatch[1];
-      logs.regexMatches['panNumber'] = panMatch[0];
+      logs.regexMatches['documentNumber'] = panMatch[0];
     }
 
     if (data.documentNumber) {
@@ -261,25 +262,82 @@ export function extractFieldsFromRawText(rawText: string, targetDocType: Documen
       data.panType = 'Individual';
     }
 
-    // Extract Name & Father Name from lines excluding header keywords
-    const candidateLines = lines.filter(line => {
-      const u = line.toUpperCase();
-      return !u.includes('INCOME TAX') &&
-             !u.includes('GOVT OF INDIA') &&
-             !u.includes('GOVERNMENT') &&
-             !u.includes('PERMANENT ACCOUNT') &&
-             !u.includes('DEPARTMENT') &&
-             !u.includes('SIGNATURE') &&
-             !/[A-Z]{5}[0-9]{4}[A-Z]/.test(u) &&
-             !/\d{2}[\/\.-]\d{2}[\/\.-]\d{4}/.test(u) &&
-             /^[A-Z\s\.\'-]{3,50}$/i.test(line);
-    });
+    // Comprehensive Blacklist for PAN Header Strings & Field Labels
+    const isPanBlacklisted = (lineStr: string): boolean => {
+      const u = lineStr.trim().toUpperCase();
+      if (u.length < 2) return true;
+      if (/\d/.test(u)) return true; // Person names on PAN card do not contain digits
+      const blacklistedTokens = [
+        'INCOME TAX DEPARTMENT',
+        'INCOME TAX',
+        'GOVT. OF INDIA',
+        'GOVT OF INDIA',
+        'GOVERNMENT OF INDIA',
+        'GOVT',
+        'GOVERNMENT',
+        'BHARAT SARKAR',
+        'AAYAKAR VIBHAG',
+        'PERMANENT ACCOUNT NUMBER CARD',
+        'PERMANENT ACCOUNT NUMBER',
+        'PERMANENT',
+        'ACCOUNT',
+        'NUMBER',
+        'DEPARTMENT',
+        'SIGNATURE',
+        'CARD HOLDER\'S SIGNATURE',
+        'CARD HOLDERS SIGNATURE',
+        'INDIA',
+        'CARD',
+        'NAME',
+        'FATHER\'S NAME',
+        'FATHER NAME',
+        'FATHERS NAME',
+        'DATE OF BIRTH',
+        'DOB',
+        'BIRTH',
+      ];
+      return blacklistedTokens.some((token) => u === token || u.includes(token));
+    };
 
-    if (candidateLines.length > 0) {
-      data.fullName = candidateLines[0].trim();
+    // Label-relative line extraction first
+    for (let i = 0; i < lines.length; i++) {
+      const lineUpper = lines[i].toUpperCase().trim();
+      if ((lineUpper === 'NAME' || lineUpper.startsWith('NAME/') || lineUpper.startsWith('NAME /')) && i + 1 < lines.length) {
+        const nextLine = lines[i + 1].trim();
+        if (!isPanBlacklisted(nextLine) && /^[A-Z\s\.\'-]{2,50}$/i.test(nextLine)) {
+          data.fullName = nextLine;
+          logs.regexMatches['fullName'] = nextLine;
+        }
+      }
+
+      if ((lineUpper.includes('FATHER') || lineUpper.includes('PARENT')) && i + 1 < lines.length) {
+        const nextLine = lines[i + 1].trim();
+        if (!isPanBlacklisted(nextLine) && /^[A-Z\s\.\'-]{2,50}$/i.test(nextLine)) {
+          data.fatherName = nextLine;
+          logs.regexMatches['fatherName'] = nextLine;
+        }
+      }
     }
-    if (candidateLines.length > 1) {
-      data.fatherName = candidateLines[1].trim();
+
+    // Fallback candidate lines filtering if not found by explicit label
+    if (!data.fullName || !data.fatherName) {
+      const candidateLines = lines.filter((line) => {
+        return !isPanBlacklisted(line) && /^[A-Z\s\.\'-]{3,50}$/i.test(line);
+      });
+
+      if (!data.fullName && candidateLines.length > 0) {
+        data.fullName = candidateLines[0].trim();
+        logs.regexMatches['fullName'] = candidateLines[0];
+      }
+      if (!data.fatherName && candidateLines.length > 1) {
+        if (candidateLines[1].trim() !== data.fullName) {
+          data.fatherName = candidateLines[1].trim();
+          logs.regexMatches['fatherName'] = candidateLines[1];
+        } else if (candidateLines.length > 2) {
+          data.fatherName = candidateLines[2].trim();
+          logs.regexMatches['fatherName'] = candidateLines[2];
+        }
+      }
     }
   }
 
@@ -320,10 +378,25 @@ export function extractFieldsFromRawText(rawText: string, targetDocType: Documen
       data.fatherName = relativeMatch[1].trim();
     }
 
-    // Full Name
-    const nameCandidate = lines.find(line => {
-      const u = line.toUpperCase();
-      return !u.includes('GOVT') && !u.includes('INDIA') && !u.includes('UIDAI') && !u.includes('AADHAAR') && /^[A-Z\s]{3,40}$/i.test(line);
+    // Full Name - Filter out Aadhaar header keywords
+    const isAadhaarBlacklisted = (lineStr: string): boolean => {
+      const u = lineStr.trim().toUpperCase();
+      return u.includes('GOVT') ||
+        u.includes('INDIA') ||
+        u.includes('UIDAI') ||
+        u.includes('AADHAAR') ||
+        u.includes('AUTHORITY') ||
+        u.includes('UNIQUE') ||
+        u.includes('IDENTIFICATION') ||
+        u.includes('ENROLMENT') ||
+        u.includes('MALE') ||
+        u.includes('FEMALE') ||
+        u.includes('DOB') ||
+        u.includes('BIRTH');
+    };
+
+    const nameCandidate = lines.find((line) => {
+      return !isAadhaarBlacklisted(line) && /^[A-Z\s]{3,40}$/i.test(line);
     });
     if (nameCandidate) {
       data.fullName = nameCandidate.trim();

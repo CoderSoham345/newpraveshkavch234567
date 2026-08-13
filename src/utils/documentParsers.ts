@@ -423,20 +423,22 @@ export function validateAndComputeFieldConfidences(
     if (!val || val === 'Not Detected – Please Verify Manually') {
       if (field.required) {
         isValid = false;
-        confidence = 40;
+        confidence = 0;
         errorMessage = 'Not Detected – Please Verify Manually';
       } else {
-        confidence = 90; // Optional field empty is acceptable
+        confidence = 0; // Optional field empty
       }
     } else if (field.validationRegex) {
       const match = field.validationRegex.test(val);
       if (!match) {
         isValid = false;
-        confidence = 55;
+        confidence = 50;
         errorMessage = field.validationMessage || `Invalid format for ${field.label}`;
       } else {
-        confidence = 99;
+        confidence = 100;
       }
+    } else {
+      confidence = 100;
     }
 
     if (confidence < 80 || !isValid) {
