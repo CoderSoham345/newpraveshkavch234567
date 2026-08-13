@@ -270,7 +270,7 @@ export const AdobeScanEditor: React.FC<AdobeScanEditorProps> = ({
       bl: { x: (corners.bottomLeft.x / imgElement.naturalWidth) * canvasW, y: (corners.bottomLeft.y / imgElement.naturalHeight) * canvasH },
     };
 
-    const handleThreshold = 32; // Generous 32px touch target radius for mobile fingers
+    const handleThreshold = 40; // Generous 40px touch target radius for mobile fingers on small screens
 
     // Check corners
     if (Math.hypot(canvasX - c.tl.x, canvasY - c.tl.y) < handleThreshold) {

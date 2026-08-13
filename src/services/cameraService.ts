@@ -310,8 +310,9 @@ export function stopCameraStream(stream: MediaStream | null): void {
   if (!stream) return;
   try {
     stream.getTracks().forEach((track) => {
+      track.enabled = false;
       track.stop();
-      logCamera(`Stopped camera track: ${track.label || track.kind}`);
+      logCamera(`Stopped & disabled camera track: ${track.label || track.kind}`);
     });
   } catch (err) {
     logCamera(`Error stopping camera track:`, err);

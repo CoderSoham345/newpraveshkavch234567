@@ -1,5 +1,36 @@
 @import "tailwindcss";
 
+@layer base {
+  html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Custom Utilities for Touch & Mobile Scroll */
+.touch-action-none {
+  touch-action: none !important;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.touch-scrolling {
+  -webkit-overflow-scrolling: touch;
+}
+
 @media print {
   body {
     background-color: white !important;
@@ -28,3 +59,4 @@
     border-color: #333 !important;
   }
 }
+
