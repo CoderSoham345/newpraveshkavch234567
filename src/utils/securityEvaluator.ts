@@ -88,10 +88,11 @@ export function evaluateFinalSecurityCheck(input: SecurityEvaluationInput): Fina
   }
 
   // 5. Host Resident Authorization (15 pts)
-  if (selectedResident && selectedResident.id) {
+  if (selectedResident && (selectedResident.id || (selectedResident as any).residentId)) {
     checks.hostAuthorized = true;
     scoreSum += 15;
-    details.push(`✓ Target Host confirmed: ${selectedResident.name} (${selectedResident.building} ${selectedResident.flatNumber}).`);
+    const flatStr = (selectedResident as any).flatNumber || (selectedResident as any).flat || '';
+    details.push(`✓ Target Host confirmed: ${selectedResident.name} (${selectedResident.building}${flatStr ? ` - Unit ${flatStr}` : ''}).`);
   } else {
     details.push(`⚠ Target Resident / Apartment Unit not yet selected.`);
   }

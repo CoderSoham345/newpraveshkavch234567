@@ -49,7 +49,7 @@ export function validateFinalRegistration(
   };
 
   // 1. Target Resident / Apartment Host Check
-  const resident = (input.residents || []).find((r: any) => r.id === input.selectedResidentId);
+  const resident = (input.residents || []).find((r: any) => (r.id || r.residentId) === input.selectedResidentId);
   if (!input.selectedResidentId || !resident) {
     missingFields.resident = true;
     errors.push('Target Resident / Apartment Unit is missing. Please select a resident host.');

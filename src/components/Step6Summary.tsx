@@ -459,11 +459,11 @@ export const Step6Summary: React.FC<Step6SummaryProps> = ({
                   : 'border-amber-500/50 bg-amber-950/10'
               }`}
             >
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between mb-2">
                 <label className="block text-[11px] font-extrabold text-slate-300 uppercase tracking-wider">
                   Target Resident / Apartment Unit <span className="text-rose-400">*</span>
                 </label>
-                {selectedResidentId ? (
+                {selectedResidentId && currentResident ? (
                   <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">
                     HOST SELECTED ✓
                   </span>
@@ -476,52 +476,101 @@ export const Step6Summary: React.FC<Step6SummaryProps> = ({
               </div>
 
               {localResidentError && (
-                <div className="mb-2 p-2 rounded-lg bg-rose-900/80 border border-rose-500 text-rose-200 text-[11px] font-bold flex items-center gap-2">
+                <div className="mb-2.5 p-2 rounded-lg bg-rose-900/80 border border-rose-500 text-rose-200 text-[11px] font-bold flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
                   <span>{localResidentError}</span>
                 </div>
               )}
 
-              {/* Resident Search Input */}
+              {/* Target Resident Dropdown */}
+              <div className="mb-3">
+                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                  Select Resident Host from Dropdown:
+                </label>
+                <select
+                  id="target-resident-dropdown"
+                  value={selectedResidentId || ''}
+                  onChange={(e) => handleSelectResident(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-white focus:border-cyan-400 focus:outline-none transition-colors"
+                >
+                  <option value="">-- Tap to Select Target Resident / Host Unit --</option>
+                  {residents.map((r) => {
+                    const rId = r.id || (r as any).residentId;
+                    const rFlat = r.flatNumber || (r as any).flat || 'Unit';
+                    return (
+                      <option key={rId} value={rId}>
+                        {r.name} — {r.building} (Flat: {rFlat})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* Selected Resident Profile Box */}
+              {currentResident && (
+                <div className="mb-3 p-3 rounded-xl bg-cyan-950/40 border border-cyan-500/40 flex items-center justify-between shadow-inner" id="selected-resident-display-card">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-cyan-500/20 border border-cyan-400/60 flex items-center justify-center font-bold text-cyan-300 text-sm shrink-0">
+                      {currentResident.name ? currentResident.name[0] : 'R'}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-xs text-white" id="selected-resident-name-display">{currentResident.name}</p>
+                        <span className="text-[9px] font-bold text-emerald-400 bg-emerald-950/90 px-1.5 py-0.2 rounded border border-emerald-500/40">VERIFIED HOST</span>
+                      </div>
+                      <p className="text-[11px] text-cyan-300 font-medium">{currentResident.building} • Flat {currentResident.flatNumber || (currentResident as any).flat}</p>
+                      <p className="text-[10px] text-slate-400 font-mono">{currentResident.phone || (currentResident as any).mobile || currentResident.email || 'Contact on file'}</p>
+                    </div>
+                  </div>
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                </div>
+              )}
+
+              {/* Quick Search & Filter */}
               <div className="relative mb-2">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
                 <input
                   type="text"
-                  placeholder="Search resident name or flat..."
+                  placeholder="Or search resident directory..."
                   value={residentSearchTerm}
                   onChange={(e) => setResidentSearchTerm(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white focus:border-cyan-400 focus:outline-none"
+                  id="input-search-target-resident"
                 />
               </div>
 
               {/* Resident Cards Picker */}
-              <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
-                {filteredResidents.map((r) => (
-                  <button
-                    type="button"
-                    key={r.id}
-                    onClick={() => handleSelectResident(r.id)}
-                    className={`w-full p-2.5 rounded-xl text-left border flex items-center justify-between transition-all cursor-pointer ${
-                      selectedResidentId === r.id
-                        ? 'bg-cyan-500/10 border-cyan-400 text-white shadow-md shadow-cyan-500/10'
-                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
-                    }`}
-                    id={`select-resident-${r.id}`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center font-bold text-cyan-400 text-xs">
-                        {r.name[0]}
+              <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                {filteredResidents.map((r) => {
+                  const rId = r.id || (r as any).residentId;
+                  const isSelected = selectedResidentId === rId;
+                  return (
+                    <button
+                      type="button"
+                      key={rId}
+                      onClick={() => handleSelectResident(rId)}
+                      className={`w-full p-2 rounded-xl text-left border flex items-center justify-between transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-cyan-500/15 border-cyan-400 text-white shadow-md shadow-cyan-500/10'
+                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                      id={`select-resident-${rId}`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center font-bold text-cyan-400 text-xs">
+                          {r.name ? r.name[0] : 'R'}
+                        </div>
+                        <div>
+                          <p className="font-bold text-xs text-white">{r.name}</p>
+                          <p className="text-[10px] text-slate-400">{r.building} ({r.flatNumber || (r as any).flat})</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-bold text-xs text-white">{r.name}</p>
-                        <p className="text-[10px] text-slate-400">{r.building} ({r.flatNumber})</p>
-                      </div>
-                    </div>
-                    {selectedResidentId === r.id && (
-                      <CheckCircle2 className="w-4 h-4 text-cyan-400" />
-                    )}
-                  </button>
-                ))}
+                      {isSelected && (
+                        <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
