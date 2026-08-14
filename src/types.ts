@@ -183,6 +183,27 @@ export interface ExtractedDocData {
   pdfDataUri?: string;
   pdfFileName?: string;
   pagesCount?: number;
+
+  // Target Audience / Visitor Classification
+  targetAudience?: string;
+  finalEvaluation?: FinalEvaluationReport;
+}
+
+export interface FinalEvaluationReport {
+  overallStatus: 'APPROVED' | 'CONDITIONAL' | 'FLAGGED' | 'VERIFIED';
+  score: number; // 0 - 100
+  evaluatedAt: string;
+  checks: {
+    documentIntegrity: boolean;
+    nameVerified: boolean;
+    docNumberValid: boolean;
+    biometricMatch: boolean;
+    hostAuthorized: boolean;
+    blacklistClear: boolean;
+    policyCompliance: boolean;
+  };
+  details: string[];
+  recommendation: 'PROCEED_ENTRY' | 'RESIDENT_APPROVAL_REQUIRED' | 'MANUAL_INSPECTION';
 }
 
 export interface FaceVerificationData {
@@ -266,6 +287,8 @@ export interface VisitorRecord {
   age?: string;
   gender?: string;
   address?: string;
+  targetAudience?: string;
+  finalEvaluation?: FinalEvaluationReport;
 }
 
 export interface SystemBuilding {

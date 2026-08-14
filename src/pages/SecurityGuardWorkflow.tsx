@@ -38,6 +38,8 @@ import {
   SaveVisitorPayload 
 } from '../utils/documentStorage';
 import { validateFinalRegistration } from '../utils/registrationValidator';
+import { optimizeImageForMobileOCR } from '../utils/mobileImageOptimizer';
+import { evaluateFinalSecurityCheck } from '../utils/securityEvaluator';
 import { AlertTriangle, CheckCircle2, CloudUpload, RefreshCw, X, HardDrive } from 'lucide-react';
 
 export function SecurityGuardWorkflow() {
@@ -138,6 +140,7 @@ export function SecurityGuardWorkflow() {
 
   const [selectedResidentId, setSelectedResidentId] = useState<string>('');
   const [visitPurpose, setVisitPurpose] = useState<string>('Personal Visit');
+  const [targetAudience, setTargetAudience] = useState<string>('General Visitor / Guest');
   const [vehicleNumber, setVehicleNumber] = useState<string>('');
   const [numAccompanying, setNumAccompanying] = useState<number>(1);
   const [visitorPhone, setVisitorPhone] = useState<string>('');
@@ -264,12 +267,16 @@ export function SecurityGuardWorkflow() {
     }
 
     try {
-      await logOCRInputDetails(imageUrl, userChosenDocType);
+      // Mobile-First Image Optimization for Samsung A12 & low-RAM Android devices
+      const { optimizedBase64 } = await optimizeImageForMobileOCR(imageUrl);
+      const targetOcrImage = optimizedBase64 || imageUrl;
+
+      await logOCRInputDetails(targetOcrImage, userChosenDocType);
 
       const response = await safeFetch('/api/ocr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: imageUrl, docType: userChosenDocType }),
+        body: JSON.stringify({ imageBase64: targetOcrImage, docType: userChosenDocType }),
       });
 
       console.log('OCR RESPONSE:', { received: true, status: response.status, data: response.data });
@@ -383,6 +390,18 @@ export function SecurityGuardWorkflow() {
 
       const resident = validation.targetResident!;
 
+      // Dynamic Real-Time Security Evaluation
+      const finalEval = evaluateFinalSecurityCheck({
+        extractedData,
+        faceMetrics,
+        selectedResident: resident,
+        frontDocUrl: frontDocImage,
+        liveFaceUrl: liveFaceImage,
+        purpose: visitPurpose,
+        targetAudience,
+        phone: visitorPhone,
+      });
+
       const payload: SaveVisitorPayload = {
         visitorName: extractedData.fullName,
         phone: visitorPhone,
@@ -399,6 +418,8 @@ export function SecurityGuardWorkflow() {
         residentName: resident.name,
         buildingUnit: `${resident.building} (${resident.flatNumber})`,
         purpose: visitPurpose || 'Personal Visit',
+        targetAudience,
+        finalEvaluation: finalEval,
         vehicleNumber,
         numAccompanying,
         guardName: user?.name || 'Security Officer',
@@ -631,6 +652,8 @@ export function SecurityGuardWorkflow() {
                   setVisitorEmail={setVisitorEmail}
                   visitorCompany={visitorCompany}
                   setVisitorCompany={setVisitorCompany}
+                  targetAudience={targetAudience}
+                  setTargetAudience={setTargetAudience}
                   onSendRequest={handleSendRequest}
                   onBackToFace={() => setCurrentStep(5)}
                   isSaving={isSaving}

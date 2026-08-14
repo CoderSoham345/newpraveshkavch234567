@@ -27,6 +27,8 @@ export interface SaveVisitorPayload {
   verificationStatus?: 'VERIFIED' | 'FAILED' | 'MANUAL_REVIEW';
   qrCodeData?: string;
   overrideDuplicate?: boolean;
+  targetAudience?: string;
+  finalEvaluation?: any;
 }
 
 export interface UploadProgressStatus {
@@ -145,6 +147,8 @@ export async function saveVisitorWithDocuments(
     qrCodeValue: `PRAVESHKAVACH-${visitorId}-${passNumber}`,
     verificationStatus: payload.verificationStatus || 'VERIFIED',
     qrCodeData: payload.qrCodeData || payload.extractedData?.qrCodeData,
+    targetAudience: payload.targetAudience || 'General Visitor / Guest',
+    finalEvaluation: payload.finalEvaluation,
   };
 
   // Try network save

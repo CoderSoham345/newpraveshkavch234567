@@ -28,6 +28,7 @@ import { DEFAULT_VISITOR_PRIVACY_PREFERENCES, maskIdentityNumber } from '../util
 import { getDocumentPrivacyConfig } from '../utils/documentPrivacyConfig';
 import { safeFetch } from '../utils/safeApi';
 import { logOCRInputDetails } from '../utils/debugLogger';
+import { optimizeImageForMobileOCR } from '../utils/mobileImageOptimizer';
 
 interface Step3VerifyFrontProps {
   frontImage: string;
@@ -100,14 +101,18 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
     setIsReOCRProcessing(true);
     setReOCRNotice(null);
     try {
-      const metrics = await logOCRInputDetails(targetImg, extractedData.documentType);
+      // Mobile-First Image Optimization for Samsung A12
+      const { optimizedBase64 } = await optimizeImageForMobileOCR(targetImg);
+      const readyImg = optimizedBase64 || targetImg;
+
+      const metrics = await logOCRInputDetails(readyImg, extractedData.documentType);
       setOcrMetrics(metrics);
 
       const response = await safeFetch('/api/ocr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageBase64: targetImg,
+          imageBase64: readyImg,
           docType: extractedData.documentType,
         }),
       });
