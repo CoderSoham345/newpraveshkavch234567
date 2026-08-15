@@ -189,6 +189,190 @@ export function determinePANType(panNumber: string): { panType: string; descript
   }
 }
 
+export interface MultiLineAddressResult {
+  address: string;
+  evidenceLines: string[];
+  pinCode?: string;
+  district?: string;
+  state?: string;
+  confidence: number;
+  source: 'OCR' | 'OCR_PARTIAL' | 'MANUAL_ENTRY' | 'OCR_UNCERTAIN';
+}
+
+/**
+ * Robust Layout-Aware Multi-Line Address Extraction Engine
+ * =========================================================
+ * Preserves ALL consecutive address lines from Aadhaar Back, Driving Licence, Voter ID, etc.
+ * Never truncates at arbitrary length or single keywords.
+ * Collects evidence lines and excludes non-address header/footer disclaimers.
+ */
+export function extractMultiLineAddressWithEvidence(rawText: string): MultiLineAddressResult {
+  if (!rawText || !rawText.trim()) {
+    return {
+      address: '',
+      evidenceLines: [],
+      confidence: 0,
+      source: 'OCR_UNCERTAIN',
+    };
+  }
+
+  const lines = rawText.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+  const collectedEvidence: string[] = [];
+
+  // Footer / UIDAI / System noise keywords to stop or exclude
+  const isStopToken = (line: string): boolean => {
+    const u = line.toUpperCase();
+    return (
+      u.includes('1947') ||
+      u.includes('HELP@UIDAI') ||
+      u.includes('WWW.UIDAI.GOV.IN') ||
+      u.includes('UNIQUE IDENTIFICATION AUTHORITY') ||
+      u.includes('भारतीय विशिष्ट पहचान प्राधिकरण') ||
+      u.includes('AADHAAR IS A PROOF OF IDENTITY') ||
+      u.includes('मेरा आधार मेरी पहचान') ||
+      u.includes('SIGNATURE NOT VERIFIED') ||
+      u.includes('ELECTRONICALLY GENERATED')
+    );
+  };
+
+  // Header tokens that indicate the start of an address block
+  const isAddressStart = (line: string): boolean => {
+    const u = line.toUpperCase();
+    return (
+      /^ADDRESS\s*[:\.-]?/i.test(line) ||
+      /^पता\s*[:\.-]?/i.test(line) ||
+      /^ADDR\s*[:\.-]?/i.test(line) ||
+      /^RESIDENCE\s*[:\.-]?/i.test(line) ||
+      /^PERMANENT ADDRESS\s*[:\.-]?/i.test(line) ||
+      /^PRESENT ADDRESS\s*[:\.-]?/i.test(line) ||
+      /^C\/O\s*[:\.-]?/i.test(line) ||
+      /^S\/O\s*[:\.-]?/i.test(line) ||
+      /^W\/O\s*[:\.-]?/i.test(line) ||
+      /^D\/O\s*[:\.-]?/i.test(line) ||
+      /^CARE OF\s*[:\.-]?/i.test(line) ||
+      u.startsWith('ADDRESS:') ||
+      u.startsWith('पता:') ||
+      u.startsWith('ADDRESS') ||
+      u.startsWith('पता')
+    );
+  };
+
+  let isCollecting = false;
+  let pinCode: string | undefined = undefined;
+
+  // Extract 6-digit Indian PIN Code anywhere in raw text
+  const pinMatch = rawText.match(/\b([1-9]\d{5})\b/);
+  if (pinMatch) {
+    pinCode = pinMatch[1];
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (!isCollecting) {
+      if (isAddressStart(line)) {
+        isCollecting = true;
+        // Clean line header
+        const cleaned = line
+          .replace(/^(?:ADDRESS|ADDR|पता|RESIDENCE|PERMANENT ADDRESS|PRESENT ADDRESS)\s*[:\.-]?\s*/i, '')
+          .trim();
+        if (cleaned.length > 0) {
+          collectedEvidence.push(cleaned);
+        }
+      }
+    } else {
+      // Check stop condition
+      if (isStopToken(line)) {
+        break;
+      }
+
+      // Check if line looks like an unrelated header
+      const u = line.toUpperCase();
+      if (
+        (u.startsWith('DOB:') || u.startsWith('DATE OF BIRTH:') || u.startsWith('GENDER:') || u.startsWith('MALE') || u.startsWith('FEMALE')) &&
+        collectedEvidence.length > 1
+      ) {
+        break;
+      }
+
+      // Valid address line
+      if (line.length > 1) {
+        collectedEvidence.push(line);
+      }
+    }
+  }
+
+  // Fallback: If no explicit 'Address:' label was detected, search for consecutive lines leading up to PIN code
+  if (collectedEvidence.length === 0 && pinMatch) {
+    const pinIndex = lines.findIndex((l) => l.includes(pinMatch[1]));
+    if (pinIndex >= 0) {
+      // Collect up to 4 lines preceding the PIN code line and the PIN code line itself
+      const startIdx = Math.max(0, pinIndex - 3);
+      for (let j = startIdx; j <= pinIndex; j++) {
+        const cand = lines[j];
+        if (!isStopToken(cand) && cand.length > 2) {
+          collectedEvidence.push(cand);
+        }
+      }
+    }
+  }
+
+  // Detect State and District from evidence lines
+  const indianStates = [
+    'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat', 
+    'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 
+    'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 
+    'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Delhi', 'Jammu & Kashmir'
+  ];
+
+  let detectedState: string | undefined = undefined;
+  let detectedDistrict: string | undefined = undefined;
+
+  const combinedEvidenceText = collectedEvidence.join(' ');
+
+  for (const st of indianStates) {
+    if (new RegExp(`\\b${st}\\b`, 'i').test(combinedEvidenceText)) {
+      detectedState = st;
+      break;
+    }
+  }
+
+  const districtMatch = combinedEvidenceText.match(/(?:Dist|District|Dist\.)\s*[:\.-]?\s*([A-Za-z\s]+?)(?:,|\.|\s+[A-Z]|\d{6}|$)/i);
+  if (districtMatch && districtMatch[1].trim().length > 2) {
+    detectedDistrict = districtMatch[1].trim();
+  }
+
+  if (collectedEvidence.length === 0) {
+    return {
+      address: '',
+      evidenceLines: [],
+      confidence: 0,
+      source: 'OCR_UNCERTAIN',
+    };
+  }
+
+  // Build formatted multi-line address string
+  let finalAddress = collectedEvidence.join(', ').replace(/\s{2,}/g, ' ').trim();
+
+  // If PIN code was found in the text but not at the end of the address, append it cleanly
+  if (pinCode && !finalAddress.includes(pinCode)) {
+    finalAddress = `${finalAddress} - ${pinCode}`;
+  }
+
+  const confidence = collectedEvidence.length >= 2 ? 92 : 75;
+  const source = confidence >= 85 ? 'OCR' : 'OCR_PARTIAL';
+
+  return {
+    address: finalAddress,
+    evidenceLines: collectedEvidence,
+    pinCode,
+    district: detectedDistrict,
+    state: detectedState,
+    confidence,
+    source,
+  };
+}
+
 /**
  * Step 4: Multi-Pass OCR Field Extraction Engine
  */
@@ -415,10 +599,28 @@ export function extractFieldsFromRawText(rawText: string, targetDocType: Documen
     if (/\bMALE\b/i.test(rawText) && !/\bFEMALE\b/i.test(rawText)) data.gender = 'Male';
     else if (/\bFEMALE\b/i.test(rawText)) data.gender = 'Female';
 
-    // Address & PIN
-    const pinMatch = rawText.match(/\b(\d{6})\b/);
-    if (pinMatch) {
-      data.pinCode = pinMatch[1];
+    // Address, PIN, District, State & Evidence Extraction
+    const addrResult = extractMultiLineAddressWithEvidence(rawText);
+    if (addrResult.address) {
+      data.address = addrResult.address;
+      data.pinCode = addrResult.pinCode || data.pinCode;
+      data.district = addrResult.district;
+      data.state = addrResult.state;
+      data.addressEvidence = {
+        value: addrResult.address,
+        source: addrResult.source,
+        evidenceLines: addrResult.evidenceLines,
+        district: addrResult.district,
+        state: addrResult.state,
+        pinCode: addrResult.pinCode,
+        confidence: addrResult.confidence,
+      };
+      logs.regexMatches['address'] = addrResult.address;
+    } else {
+      const pinMatch = rawText.match(/\b([1-9]\d{5})\b/);
+      if (pinMatch) {
+        data.pinCode = pinMatch[1];
+      }
     }
 
     // Father/Husband Name

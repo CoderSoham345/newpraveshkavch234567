@@ -7,12 +7,13 @@ export interface DocTypeSchema {
   fields: {
     key: keyof ExtractedDocData;
     label: string;
-    type: 'text' | 'date' | 'select' | 'number';
+    type: 'text' | 'date' | 'select' | 'number' | 'textarea';
     options?: string[];
     placeholder?: string;
     validationRegex?: RegExp;
     validationMessage?: string;
     required?: boolean;
+    rows?: number;
   }[];
 }
 
@@ -20,6 +21,30 @@ export interface DocTypeSchema {
  * Registry of Supported Document Types and their Specific Extraction Schemas
  */
 export const DOCUMENT_SCHEMAS: Record<string, DocTypeSchema> = {
+  'AADHAAR_CARD': {
+    type: 'AADHAAR_CARD',
+    label: 'Aadhaar Card (UIDAI Front & Back)',
+    iconName: 'ShieldCheck',
+    fields: [
+      {
+        key: 'documentNumber',
+        label: 'Aadhaar Number',
+        type: 'text',
+        placeholder: '5482 1111 2222',
+        validationRegex: /^\d{4}\s?\d{4}\s?\d{4}$/,
+        validationMessage: 'Aadhaar Number must be 12 digits (e.g., 5482 1111 2222)',
+        required: true,
+      },
+      { key: 'fullName', label: 'Full Name', type: 'text', required: true },
+      { key: 'dob', label: 'Date of Birth', type: 'text', required: true },
+      { key: 'gender', label: 'Gender', type: 'select', options: ['Male', 'Female', 'Other'], required: true },
+      { key: 'fatherName', label: "Father's / Care Of (C/O)", type: 'text' },
+      { key: 'address', label: 'Complete Address (Back Side)', type: 'textarea', rows: 3, placeholder: 'House/Flat No, Street, Locality, City, State, PIN Code' },
+      { key: 'pinCode', label: 'PIN Code', type: 'text', validationRegex: /^\d{6}$/, validationMessage: 'PIN code must be 6 digits' },
+      { key: 'district', label: 'District', type: 'text' },
+      { key: 'state', label: 'State', type: 'text' },
+    ],
+  },
   'AADHAAR_FRONT': {
     type: 'AADHAAR_FRONT',
     label: 'Aadhaar Card (Front - UIDAI)',
@@ -39,8 +64,9 @@ export const DOCUMENT_SCHEMAS: Record<string, DocTypeSchema> = {
       { key: 'age', label: 'Age', type: 'text' },
       { key: 'gender', label: 'Gender', type: 'select', options: ['Male', 'Female', 'Other'], required: true },
       { key: 'fatherName', label: "Father's / Guardian Name", type: 'text' },
-      { key: 'address', label: 'Address', type: 'text' },
+      { key: 'address', label: 'Address (Back Side)', type: 'textarea', rows: 3, placeholder: 'House/Flat No, Street, Locality, City, State, PIN Code' },
       { key: 'pinCode', label: 'PIN Code', type: 'text', validationRegex: /^\d{6}$/, validationMessage: 'PIN code must be 6 digits' },
+      { key: 'district', label: 'District', type: 'text' },
       { key: 'state', label: 'State', type: 'text' },
       { key: 'aadhaarVersion', label: 'Aadhaar Version', type: 'text' },
       { key: 'uidaiInfo', label: 'UIDAI Security Stamp', type: 'text' },
@@ -107,7 +133,7 @@ export const DOCUMENT_SCHEMAS: Record<string, DocTypeSchema> = {
       },
       { key: 'fullName', label: 'Full Name', type: 'text', required: true },
       { key: 'dob', label: 'Date of Birth', type: 'text', required: true },
-      { key: 'address', label: 'Address', type: 'text' },
+      { key: 'address', label: 'Address', type: 'textarea', rows: 3, placeholder: 'Permanent / Current Address' },
       { key: 'bloodGroup', label: 'Blood Group', type: 'select', options: ['O+', 'A+', 'B+', 'AB+', 'O-', 'A-', 'B-', 'AB-'] },
       { key: 'vehicleCategories', label: 'Vehicle Categories', type: 'text' },
       { key: 'issueDate', label: 'Date of Issue', type: 'text' },
@@ -132,7 +158,7 @@ export const DOCUMENT_SCHEMAS: Record<string, DocTypeSchema> = {
       { key: 'fullName', label: 'Full Name', type: 'text', required: true },
       { key: 'gender', label: 'Gender', type: 'select', options: ['Male', 'Female', 'Other'], required: true },
       { key: 'dob', label: 'Date of Birth / Age', type: 'text' },
-      { key: 'address', label: 'Address', type: 'text' },
+      { key: 'address', label: 'Address', type: 'textarea', rows: 3, placeholder: 'Resident Address' },
       { key: 'constituency', label: 'Assembly Constituency', type: 'text' },
     ],
   },
@@ -167,8 +193,9 @@ export const DOCUMENT_SCHEMAS: Record<string, DocTypeSchema> = {
     label: 'Aadhaar Card (Back)',
     iconName: 'MapPin',
     fields: [
-      { key: 'address', label: 'Complete Address', type: 'text', required: true },
+      { key: 'address', label: 'Complete Multi-line Address', type: 'textarea', rows: 4, placeholder: 'House/Flat No, Road, Locality, City, State, PIN Code', required: true },
       { key: 'pinCode', label: 'PIN Code', type: 'text', validationRegex: /^\d{6}$/, required: true },
+      { key: 'district', label: 'District', type: 'text' },
       { key: 'state', label: 'State', type: 'text', required: true },
     ],
   },

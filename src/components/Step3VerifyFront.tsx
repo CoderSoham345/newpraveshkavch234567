@@ -32,25 +32,30 @@ import { optimizeImageForMobileOCR } from '../utils/mobileImageOptimizer';
 
 interface Step3VerifyFrontProps {
   frontImage: string;
+  backImage?: string;
   extractedData: ExtractedDocData;
   setExtractedData: (data: ExtractedDocData) => void;
   onProceedToScanBack: () => void;
   onRetakeFront: () => void;
+  onScanBack?: () => void;
   onNavigateToHistory?: () => void;
   onUpdateFrontImage?: (newImgUrl: string) => void;
 }
 
 export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
   frontImage,
+  backImage,
   extractedData,
   setExtractedData,
   onProceedToScanBack,
   onRetakeFront,
+  onScanBack,
   onNavigateToHistory,
   onUpdateFrontImage,
 }) => {
   const [isEditing, setIsEditing] = useState<boolean>(true); // Default to editing mode for direct input!
   const [showRawOcr, setShowRawOcr] = useState<boolean>(false);
+  const [rawOcrTab, setRawOcrTab] = useState<'front' | 'back'>('front');
   const [isSaveModalOpen, setIsSaveModalOpen] = useState<boolean>(false);
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState<boolean>(false);
   const [isAadhaarModalOpen, setIsAadhaarModalOpen] = useState<boolean>(false);
@@ -269,6 +274,7 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
               </button>
             </div>
 
+            {/* Main Image Preview: Front Document */}
             <div className="relative rounded-xl overflow-hidden border border-slate-700 bg-black aspect-[1.586/1]">
               <img
                 src={frontImage}
@@ -276,7 +282,7 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
                 className="w-full h-full object-cover"
               />
               <div className="absolute top-2 left-2 px-2.5 py-1 rounded-md bg-slate-950/90 text-xs font-black text-cyan-300 border border-cyan-500/40 shadow-lg backdrop-blur-md">
-                {validatedData.documentType}
+                {validatedData.documentType} (FRONT)
               </div>
 
               {validatedData.qrCodeData && (
@@ -286,6 +292,54 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Back Document Image Preview (if present) or Quick Scan Invitation */}
+            {backImage ? (
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <BadgeCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Back Side & Address Document</span>
+                  </span>
+                  {onScanBack && (
+                    <button
+                      type="button"
+                      onClick={onScanBack}
+                      className="text-[10px] font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 cursor-pointer"
+                      id="btn-rescan-back-from-verify"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Re-scan Back</span>
+                    </button>
+                  )}
+                </div>
+                <div className="relative rounded-xl overflow-hidden border border-slate-700 bg-black aspect-[1.586/1]">
+                  <img
+                    src={backImage}
+                    alt="Back ID Document"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-slate-950/90 text-[10px] font-bold text-emerald-300 border border-emerald-500/40">
+                    BACK SIDE (ADDRESS VERIFIED)
+                  </div>
+                </div>
+              </div>
+            ) : onScanBack && (
+              <div className="p-3 rounded-xl bg-slate-950 border border-cyan-500/30 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-white">Back Side Document</p>
+                  <p className="text-[10px] text-slate-400">Scan back side for full multi-line address</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onScanBack}
+                  className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs cursor-pointer shadow-sm"
+                  id="btn-scan-back-cta"
+                >
+                  Scan Back
+                </button>
+              </div>
+            )}
 
             {/* Crop & Re-OCR Action Buttons */}
             <div className="grid grid-cols-2 gap-2 pt-1">
@@ -370,10 +424,29 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
           {showRawOcr && (
             <div className="p-3.5 rounded-xl bg-slate-950 border border-amber-500/40 text-amber-300 font-mono text-[11px] space-y-3 shadow-inner">
               <div className="flex items-center justify-between text-[10px] text-slate-400 uppercase tracking-widest font-sans font-bold border-b border-slate-800 pb-1.5">
-                <span className="flex items-center gap-1.5 text-amber-400">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>OCR Pipeline Debug & Trace</span>
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="flex items-center gap-1.5 text-amber-400">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>OCR Pipeline Debug & Trace</span>
+                  </span>
+                  {/* Side Switch Tabs */}
+                  <div className="flex items-center rounded-lg bg-slate-900 p-0.5 border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setRawOcrTab('front')}
+                      className={`px-2 py-0.5 rounded text-[9px] font-bold ${rawOcrTab === 'front' ? 'bg-amber-500/20 text-amber-300' : 'text-slate-400'}`}
+                    >
+                      Front Side
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRawOcrTab('back')}
+                      className={`px-2 py-0.5 rounded text-[9px] font-bold ${rawOcrTab === 'back' ? 'bg-amber-500/20 text-amber-300' : 'text-slate-400'}`}
+                    >
+                      Back Side / Address
+                    </button>
+                  </div>
+                </div>
                 <span className="text-emerald-400 font-sans font-bold">STATUS: {extractedData.ocrStatus || 'READY'}</span>
               </div>
 
@@ -398,43 +471,25 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
               {/* Raw Text Stream */}
               <div className="space-y-1">
                 <div className="text-[10px] text-slate-400 uppercase tracking-wider font-sans font-bold flex items-center justify-between">
-                  <span>RAW OCR TEXT:</span>
+                  <span>RAW OCR TEXT ({rawOcrTab.toUpperCase()}):</span>
                   <span className="text-cyan-400 font-mono text-[9px]">RAW OCR STREAM</span>
                 </div>
                 <pre className="whitespace-pre-wrap break-words leading-relaxed max-h-32 overflow-y-auto p-2.5 bg-black rounded border border-amber-500/20 text-amber-200 text-[11px]">
-                  {extractedData.rawText || validatedData.rawText || 'No raw OCR stream detected yet. Click "Re-read OCR" or crop image to extract.'}
+                  {rawOcrTab === 'front'
+                    ? (extractedData.rawText || validatedData.rawText || 'No front OCR text stream detected yet.')
+                    : (extractedData.addressEvidence?.evidenceLines?.join('\n') || extractedData.address || 'No back OCR text stream detected yet. Scan back side of card.')
+                  }
                 </pre>
               </div>
 
-              {/* Field Evidence Mapping Trace */}
-              <div className="space-y-1.5 pt-1 border-t border-slate-800">
-                <div className="text-[10px] text-amber-400 uppercase tracking-wider font-sans font-bold flex items-center gap-1">
-                  <span>PAN FIELD EVIDENCE</span>
-                  <span className="text-slate-500 text-[9px] font-mono font-normal">(EXACT OCR REASONING)</span>
+              {/* Address Evidence Breakdown */}
+              {extractedData.addressEvidence && (
+                <div className="p-2 bg-slate-900 rounded border border-slate-800 text-[10px] space-y-1 font-sans text-slate-300">
+                  <div className="text-amber-400 font-bold uppercase">Address OCR Evidence:</div>
+                  <div><span className="text-slate-500">Source:</span> {extractedData.addressEvidence.source} | <span className="text-slate-500">Confidence:</span> {extractedData.addressEvidence.confidence}%</div>
+                  {extractedData.addressEvidence.pinCode && <div><span className="text-slate-500">PIN Code:</span> <span className="text-emerald-300 font-bold">{extractedData.addressEvidence.pinCode}</span></div>}
                 </div>
-                <div className="space-y-1.5 p-2 bg-slate-900/90 rounded border border-slate-800 text-[11px] font-mono">
-                  <div>
-                    <span className="text-slate-400 block font-sans text-[9px] uppercase font-bold">PAN NUMBER:</span>
-                    <span className="text-emerald-300 font-bold">{validatedData.documentNumber || '[ Could not read automatically ]'}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block font-sans text-[9px] uppercase font-bold">FULL NAME:</span>
-                    <span className={extractedData.manualOverrides?.fullName ? 'text-cyan-300 font-bold' : validatedData.fullName ? 'text-emerald-300 font-bold' : 'text-rose-400 italic font-sans'}>
-                      {extractedData.manualOverrides?.fullName
-                        ? `${validatedData.fullName} (Manual Entry)`
-                        : validatedData.fullName || '[ Could not read automatically - Enter manually ]'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block font-sans text-[9px] uppercase font-bold">FATHER'S NAME:</span>
-                    <span className="text-emerald-300 font-bold">{validatedData.fatherName || '[ Could not read automatically ]'}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block font-sans text-[9px] uppercase font-bold">DATE OF BIRTH:</span>
-                    <span className="text-emerald-300 font-bold">{validatedData.dob || '[ Could not read automatically ]'}</span>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -448,7 +503,7 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
             </div>
           )}
 
-          {/* Dynamic Form Generation with Direct Editable Inputs */}
+          {/* Dynamic Form Generation with Direct Editable Inputs & Textarea for Multi-Line Address */}
           <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
             {(currentSchema?.fields || []).map((field) => {
               const val = (validatedData as any)[field.key] || '';
@@ -458,6 +513,7 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
                 confidence: 90,
                 isValid: true,
               };
+              const isTextarea = field.type === 'textarea' || field.key === 'address';
 
               return (
                 <div key={field.key as string} className="space-y-1">
@@ -494,25 +550,33 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
                     </div>
                   </div>
 
-                  {/* Input Field */}
+                  {/* Input Field or Textarea */}
                   {field.type === 'select' ? (
                     <select
                       value={val}
                       onChange={(e) => handleFieldValueChange(field.key, e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 focus:border-cyan-500 text-white rounded-lg px-3 py-2 text-xs font-bold focus:outline-none transition-colors"
+                      className="w-full bg-slate-950 border border-slate-700 focus:border-cyan-500 text-white rounded-lg px-3 py-2 text-xs font-bold focus:outline-hidden transition-colors"
                     >
                       <option value="">Select {field.label}</option>
                       {field.options?.map((opt) => (
                         <option key={opt} value={opt}>{opt}</option>
                       ))}
                     </select>
+                  ) : isTextarea ? (
+                    <textarea
+                      rows={field.rows || 3}
+                      value={val}
+                      placeholder={field.placeholder || `Enter complete multi-line ${field.label}`}
+                      onChange={(e) => handleFieldValueChange(field.key, e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 focus:border-cyan-500 text-white rounded-lg px-3 py-2 text-xs font-medium focus:outline-hidden transition-colors leading-relaxed shadow-inner"
+                    />
                   ) : (
                     <input
                       type="text"
                       value={val}
-                      placeholder={`Enter ${field.label}`}
+                      placeholder={field.placeholder || `Enter ${field.label}`}
                       onChange={(e) => handleFieldValueChange(field.key, e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 focus:border-cyan-500 text-white rounded-lg px-3 py-2 text-xs font-bold focus:outline-none transition-colors"
+                      className="w-full bg-slate-950 border border-slate-700 focus:border-cyan-500 text-white rounded-lg px-3 py-2 text-xs font-bold focus:outline-hidden transition-colors"
                     />
                   )}
 

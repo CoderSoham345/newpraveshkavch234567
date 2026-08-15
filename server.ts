@@ -1433,12 +1433,12 @@ const handleOCRRequest = async (req: express.Request, res: express.Response) => 
     // Pass 1: Gemini AI Multimodal Vision Analysis (If Gemini Client is active)
     if (ai) {
       try {
-        console.log('[v0] Running Pass 1: Gemini Multimodal AI Analysis...');
+        console.log(`[v0] Running Pass 1: Gemini Multimodal AI Analysis for SIDE: ${side}...`);
         const prompt = `You are PraveshKavach™ Enterprise Identity Verification OCR AI.
 Extract structured fields and complete raw text from this government identity document image.
 
 Target Document Type Requested: ${docType || 'AUTOMATIC_DETECTION'}
-Requested Side: ${side || 'front'}
+Requested Document Side: ${side || 'front'}
 
 CRITICAL INSTRUCTIONS:
 Read only text that is visibly present in this image.
@@ -1448,20 +1448,30 @@ If a field is not readable or not present, return null or empty string "".
 CRITICAL STAGE 1: RAW OCR TEXT STREAM
 Extract ALL visible text from top to bottom into rawText. Do not truncate, omit, or summarize. Include both English and Hindi/Regional text verbatim.
 
-CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
+CRITICAL STAGE 2: DOCUMENT EXTRACTION (SIDE-AWARE)
+${side === 'back' ? `
+SPECIFIC BACK-SIDE EXTRACTION RULES:
+1. This is the BACK SIDE of an Indian identity document (Aadhaar / DL / Voter ID).
+2. Extract the COMPLETE MULTI-LINE ADDRESS into 'address'. PRESERVE ALL ADDRESS LINES.
+   - Include Flat/House No, Building, Road, Landmark, Area, Locality, Village, Taluk, City.
+   - Include District into 'district', State into 'state', and 6-digit Indian PIN Code into 'pinCode'.
+   - DO NOT truncate at first line. Capture the entire continuous address block verbatim.
+3. Extract RELATIONSHIP / CARE OF (C/O, S/O, W/O, D/O) into 'fatherName'.
+4. Do not force fullName or documentNumber if not printed on the back side.
+` : `
+SPECIFIC FRONT-SIDE EXTRACTION RULES:
 1. Identify PRIMARY CARDHOLDER FULL NAME (fullName):
    - Locate the main cardholder's name printed in English and Hindi.
    - For PAN Cards: The cardholder's name is printed below the 'Name' label and directly ABOVE the 'Father\'s Name' label.
    - DO NOT confuse father's name (S/O, D/O, W/O), mother's name, or officer/government header text (such as 'INCOME TAX DEPARTMENT', 'GOVT OF INDIA', 'AAYAKAR VIBHAG', 'ARA AVOR') with fullName.
    - If cardholder's name is not explicitly readable, return null for fullName. NEVER guess or invent names.
-2. Identify RELATIONSHIP / FATHER'S / SPOUSE NAME (fatherName):
-   - Look for "S/O", "D/O", "W/O", "C/O", "Father:", "Husband:", or Father's Name label on PAN card.
+2. Identify RELATIONSHIP / FATHER'S / SPOUSE NAME (fatherName).
 3. Extract DOB (dob) in DD/MM/YYYY or YEAR OF BIRTH (yearOfBirth) in YYYY if only year is visible.
 4. Extract GENDER (gender): "Male", "Female", or "Transgender".
 5. Extract AADHAAR / ID NUMBER (documentNumber): 12 digits (e.g. 1234 5678 9012) or 12-digit masked format, or 10-char PAN (ABCDE1234F).
-6. Extract MULTILINE ADDRESS (address), DISTRICT (district), STATE (state), and 6-digit PIN CODE (pinCode).
-7. PORTRAIT DETECTION (portraitDetected): Set to true if a printed photo/portrait of the individual is present on the card.
-8. Return null for any field not visibly present on the card - NEVER invent or hallucinate data.`;
+6. PORTRAIT DETECTION (portraitDetected): Set to true if a printed photo/portrait of the individual is present on the card.
+`}
+7. Return null for any field not visibly present on the card - NEVER invent or hallucinate data.`;
 
         const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
         let geminiRespText: string | null = null;
@@ -1696,12 +1706,23 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
     }
 
     const lowFields: string[] = [...(ruleBasedResult.extractedData.lowConfidenceFields || [])];
-    if (!extractedFullName && !lowFields.includes('fullName')) lowFields.push('fullName');
-    if (!extractedDocNum && !lowFields.includes('documentNumber')) lowFields.push('documentNumber');
+    if (side === 'front') {
+      if (!extractedFullName && !lowFields.includes('fullName')) lowFields.push('fullName');
+      if (!extractedDocNum && !lowFields.includes('documentNumber')) lowFields.push('documentNumber');
+    } else if (side === 'back') {
+      const addrCheck = geminiParsedData?.address || ruleBasedResult.extractedData.address;
+      if (!addrCheck && !lowFields.includes('address')) lowFields.push('address');
+    }
 
-    const calculatedConfidence = (!extractedFullName || !extractedDocNum)
-      ? Math.min(ruleBasedResult.overallConfidence || 40, 50)
-      : (geminiParsedData?.confidenceScore || ruleBasedResult.overallConfidence || 88);
+    let calculatedConfidence = 85;
+    if (side === 'back') {
+      const hasAddr = geminiParsedData?.address || ruleBasedResult.extractedData.address;
+      calculatedConfidence = hasAddr ? 92 : (rawOCRText.length > 20 ? 75 : 40);
+    } else {
+      calculatedConfidence = (!extractedFullName || !extractedDocNum)
+        ? Math.min(ruleBasedResult.overallConfidence || 40, 50)
+        : (geminiParsedData?.confidenceScore || ruleBasedResult.overallConfidence || 88);
+    }
 
     const mergedData: ExtractedDocData = {
       fullName: extractedFullName,
@@ -1730,6 +1751,16 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
       rawText: geminiParsedData?.rawText || rawOCRText || (geminiParsedData ? `DOCUMENT TYPE: ${finalTargetType}\nNAME: ${extractedFullName}\nDOC NO: ${extractedDocNum}\nDOB: ${geminiParsedData.dob || ''}\nGENDER: ${geminiParsedData.gender || ''}\nFATHER NAME: ${geminiParsedData.fatherName || ''}\nADDRESS: ${geminiParsedData.address || ''}\nPIN CODE: ${geminiParsedData.pinCode || ''}` : ''),
       confidenceScore: calculatedConfidence,
       lowConfidenceFields: lowFields,
+      side: side,
+      addressEvidence: ruleBasedResult.extractedData.addressEvidence || ((addr: string | undefined) => ({
+        value: addr || null,
+        source: (addr ? 'OCR' : 'OCR_UNCERTAIN') as 'OCR' | 'OCR_UNCERTAIN',
+        evidenceLines: addr ? addr.split('\n') : [],
+        district: geminiParsedData?.district || ruleBasedResult.extractedData.district,
+        state: geminiParsedData?.state || ruleBasedResult.extractedData.state,
+        pinCode: geminiParsedData?.pinCode || ruleBasedResult.extractedData.pinCode,
+        confidence: addr ? 90 : 0,
+      }))(geminiParsedData?.address || ruleBasedResult.extractedData.address),
       developerLogs: {
         rawOCRText: rawOCRText || geminiParsedData?.rawText || '',
         opticalCorrections: ruleBasedResult.developerLogs.opticalCorrections,
@@ -1741,6 +1772,7 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
           fullName: ruleBasedResult.developerLogs.regexMatches['fullName'] || (extractedFullName && !isHeaderLabel(extractedFullName) ? extractedFullName : null),
           fatherName: ruleBasedResult.developerLogs.regexMatches['fatherName'] || extractedFatherName || null,
           dob: ruleBasedResult.developerLogs.regexMatches['dob'] || ruleBasedResult.extractedData.dob || null,
+          address: ruleBasedResult.developerLogs.regexMatches['address'] || geminiParsedData?.address || null,
         }
       }
     };
@@ -1765,6 +1797,7 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
     return res.json({
       success: true,
       documentType: finalTargetType,
+      side: side || 'front',
       rawText: mergedData.rawText || rawOCRText || '',
       fields: {
         fullName: mergedData.fullName || null,
@@ -1775,6 +1808,7 @@ CRITICAL STAGE 2: AADHAAR & ID FIELD EXTRACTION
         fatherName: mergedData.fatherName || null,
         pinCode: mergedData.pinCode || null,
       },
+      addressEvidence: mergedData.addressEvidence,
       documentClassification: {
         documentType: finalTargetType,
         confidence: mergedData.confidenceScore,

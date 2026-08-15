@@ -282,6 +282,90 @@ export function extractStudentID(text: string): FieldExtractionResult {
   return { value: null, confidence: 0 };
 }
 
+// ============= GENERAL ADDRESS EXTRACTOR =============
+
+export function extractDocumentAddress(text: string): FieldExtractionResult & { evidenceLines?: string[]; pinCode?: string } {
+  if (!text || !text.trim()) {
+    return { value: null, confidence: 0 };
+  }
+
+  const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+  const collected: string[] = [];
+
+  const isStop = (l: string) => {
+    const u = l.toUpperCase();
+    return (
+      u.includes('1947') ||
+      u.includes('UIDAI') ||
+      u.includes('UNIQUE IDENTIFICATION') ||
+      u.includes('AUTHORITY OF INDIA') ||
+      u.includes('GOVERNMENT OF INDIA') ||
+      u.includes('SIGNATURE')
+    );
+  };
+
+  const isStart = (l: string) => {
+    return (
+      /^ADDRESS\s*[:\.-]?/i.test(l) ||
+      /^पता\s*[:\.-]?/i.test(l) ||
+      /^C\/O\s*[:\.-]?/i.test(l) ||
+      /^S\/O\s*[:\.-]?/i.test(l) ||
+      /^D\/O\s*[:\.-]?/i.test(l) ||
+      /^W\/O\s*[:\.-]?/i.test(l)
+    );
+  };
+
+  let collecting = false;
+  let pinCode: string | undefined = undefined;
+
+  const pinMatch = text.match(/\b([1-9]\d{5})\b/);
+  if (pinMatch) {
+    pinCode = pinMatch[1];
+  }
+
+  for (const line of lines) {
+    if (!collecting) {
+      if (isStart(line)) {
+        collecting = true;
+        const cleaned = line.replace(/^(?:ADDRESS|ADDR|पता)\s*[:\.-]?\s*/i, '').trim();
+        if (cleaned) collected.push(cleaned);
+      }
+    } else {
+      if (isStop(line)) break;
+      if (line.length > 1) collected.push(line);
+    }
+  }
+
+  if (collected.length === 0 && pinMatch) {
+    const pinIdx = lines.findIndex((l) => l.includes(pinMatch[1]));
+    if (pinIdx >= 0) {
+      const start = Math.max(0, pinIdx - 3);
+      for (let k = start; k <= pinIdx; k++) {
+        if (!isStop(lines[k]) && lines[k].length > 2) {
+          collected.push(lines[k]);
+        }
+      }
+    }
+  }
+
+  if (collected.length === 0) {
+    return { value: null, confidence: 0 };
+  }
+
+  let finalAddr = collected.join(', ').replace(/\s{2,}/g, ' ').trim();
+  if (pinCode && !finalAddr.includes(pinCode)) {
+    finalAddr = `${finalAddr} - ${pinCode}`;
+  }
+
+  return {
+    value: finalAddr,
+    confidence: collected.length >= 2 ? 90 : 75,
+    rawMatches: collected,
+    evidenceLines: collected,
+    pinCode,
+  };
+}
+
 // ============= UTILITY FUNCTIONS =============
 
 /**

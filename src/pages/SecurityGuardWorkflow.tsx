@@ -301,15 +301,46 @@ export function SecurityGuardWorkflow() {
     setCurrentStep(3);
   };
 
-  const handleBackCaptureCompleted = (backUrl: string, addressData?: any) => {
+  const handleBackCaptureCompleted = (
+    backUrl: string, 
+    addressData?: { address: string; pinCode?: string; district?: string; state?: string },
+    addressEvidence?: any,
+    rawOcrText?: string
+  ) => {
     setBackDocImage(backUrl);
-    if (addressData) {
-      setExtractedData((prev) => ({
-        ...prev,
-        address: addressData.address || prev.address,
-        pinCode: addressData.pinCode || prev.pinCode,
-      }));
+    if (addressData || addressEvidence) {
+      setExtractedData((prev) => {
+        const isManual = Boolean(prev.manualOverrides?.address);
+        const newPages = [
+          ...(prev.documentPages?.filter((p) => p.side !== 'back') || [
+            {
+              id: `page-front-${Date.now()}`,
+              side: 'front' as const,
+              imageUrl: frontDocImage,
+              processedAt: new Date().toISOString(),
+            },
+          ]),
+          {
+            id: `page-back-${Date.now()}`,
+            side: 'back' as const,
+            imageUrl: backUrl,
+            rawText: rawOcrText,
+            processedAt: new Date().toISOString(),
+          },
+        ];
+
+        return {
+          ...prev,
+          address: isManual ? prev.address : (addressData?.address || prev.address),
+          pinCode: addressData?.pinCode || prev.pinCode,
+          district: addressData?.district || prev.district,
+          state: addressData?.state || prev.state,
+          addressEvidence: addressEvidence || prev.addressEvidence,
+          documentPages: newPages,
+        };
+      });
     }
+    // Return to Step 3 so guard sees both verified front and back with address preview
     setCurrentStep(3);
   };
 
@@ -615,10 +646,12 @@ export function SecurityGuardWorkflow() {
               {currentStep === 3 && (
                 <Step3VerifyFront
                   frontImage={frontDocImage}
+                  backImage={backDocImage}
                   extractedData={extractedData}
                   setExtractedData={setExtractedData}
                   onProceedToScanBack={handleProceedToFaceCheck}
                   onRetakeFront={() => setCurrentStep(2)}
+                  onScanBack={() => setCurrentStep(4)}
                   onNavigateToHistory={() => setActiveTab('history')}
                   onUpdateFrontImage={setFrontDocImage}
                 />

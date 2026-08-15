@@ -431,8 +431,8 @@ export const Step6Summary: React.FC<Step6SummaryProps> = ({
 
             {extractedData.address && (
               <div>
-                <span className="text-slate-400 font-semibold block text-[11px] uppercase">Full Address</span>
-                <p className="text-slate-300 text-[11px] leading-relaxed bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-400 font-semibold block text-[11px] uppercase">Complete Multi-Line Address</span>
+                <p className="text-slate-200 text-xs leading-relaxed bg-slate-950 p-2.5 rounded-lg border border-slate-800 whitespace-pre-line shadow-inner">
                   {extractedData.address}
                 </p>
               </div>

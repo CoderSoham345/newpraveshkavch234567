@@ -306,50 +306,124 @@ export function calculateAge(dob: string): {
 
 /**
  * Extract Address - EXACTLY as printed
- * NO rewriting, NO reformatting, NO merging
+ * Layout-aware and Multi-line preserving
+ * Collects all consecutive address lines, ignores noise, respects Hindi & English prefixes
  */
 export function extractAddress(rawText: string): {
   value: string;
   confidence: number;
+  evidenceLines: string[];
+  pinCode?: string;
+  source: 'OCR' | 'OCR_PARTIAL' | 'MANUAL_ENTRY' | 'OCR_UNCERTAIN';
 } {
-  if (!rawText || rawText.length === 0) {
-    return { value: '', confidence: 0 };
+  if (!rawText || rawText.trim().length === 0) {
+    return { value: '', confidence: 0, evidenceLines: [], source: 'OCR_UNCERTAIN' };
   }
 
-  // Address appears after "Address:" label usually
-  // Collect all lines after address label
-  const lines = rawText.split('\n');
-  let collectingAddress = false;
-  let addressLines: string[] = [];
+  const lines = rawText.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+  const collectedLines: string[] = [];
 
-  for (const line of lines) {
-    const trimmed = line.trim();
+  const isStopKeyword = (line: string): boolean => {
+    const u = line.toUpperCase();
+    return (
+      u.includes('1947') ||
+      u.includes('HELP@UIDAI') ||
+      u.includes('WWW.UIDAI.GOV.IN') ||
+      u.includes('UNIQUE IDENTIFICATION AUTHORITY') ||
+      u.includes('भारतीय विशिष्ट पहचान प्राधिकरण') ||
+      u.includes('AADHAAR IS A PROOF OF IDENTITY') ||
+      u.includes('मेरा आधार मेरी पहचान') ||
+      u.includes('SIGNATURE NOT VERIFIED')
+    );
+  };
 
-    if (trimmed.match(/^address\s*[:]/i)) {
-      collectingAddress = true;
-      continue;
-    }
+  const isAddressStartHeader = (line: string): boolean => {
+    return (
+      /^ADDRESS\s*[:\.-]?/i.test(line) ||
+      /^पता\s*[:\.-]?/i.test(line) ||
+      /^ADDR\s*[:\.-]?/i.test(line) ||
+      /^RESIDENCE\s*[:\.-]?/i.test(line) ||
+      /^PERMANENT ADDRESS\s*[:\.-]?/i.test(line) ||
+      /^C\/O\s*[:\.-]?/i.test(line) ||
+      /^S\/O\s*[:\.-]?/i.test(line) ||
+      /^W\/O\s*[:\.-]?/i.test(line) ||
+      /^D\/O\s*[:\.-]?/i.test(line) ||
+      /^CARE OF\s*[:\.-]?/i.test(line)
+    );
+  };
 
-    if (collectingAddress) {
-      if (trimmed.length > 0) {
-        addressLines.push(trimmed);
-      } else if (addressLines.length > 0) {
-        // Empty line after collecting - address section ends
+  let collecting = false;
+  let detectedPin: string | undefined = undefined;
+
+  const pinMatch = rawText.match(/\b([1-9]\d{5})\b/);
+  if (pinMatch) {
+    detectedPin = pinMatch[1];
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (!collecting) {
+      if (isAddressStartHeader(line)) {
+        collecting = true;
+        const cleaned = line
+          .replace(/^(?:ADDRESS|ADDR|पता|RESIDENCE|PERMANENT ADDRESS|PRESENT ADDRESS)\s*[:\.-]?\s*/i, '')
+          .trim();
+        if (cleaned.length > 0) {
+          collectedLines.push(cleaned);
+        }
+      }
+    } else {
+      if (isStopKeyword(line)) {
         break;
+      }
+
+      // If we encounter a new distinct non-address section
+      const u = line.toUpperCase();
+      if (
+        (u.startsWith('DOB:') || u.startsWith('GENDER:') || u.startsWith('DATE OF BIRTH:')) &&
+        collectedLines.length > 0
+      ) {
+        break;
+      }
+
+      if (line.length > 1) {
+        collectedLines.push(line);
       }
     }
   }
 
-  if (addressLines.length === 0) {
-    return { value: '', confidence: 0 };
+  // Fallback: search for lines preceding PIN code
+  if (collectedLines.length === 0 && detectedPin) {
+    const pinIdx = lines.findIndex((l) => l.includes(detectedPin!));
+    if (pinIdx >= 0) {
+      const start = Math.max(0, pinIdx - 3);
+      for (let k = start; k <= pinIdx; k++) {
+        if (!isStopKeyword(lines[k]) && lines[k].length > 2) {
+          collectedLines.push(lines[k]);
+        }
+      }
+    }
   }
 
-  // Return address EXACTLY as OCR detected it - joined by newlines
-  const address = addressLines.join('\n');
+  if (collectedLines.length === 0) {
+    return { value: '', confidence: 0, evidenceLines: [], source: 'OCR_UNCERTAIN' };
+  }
+
+  let finalAddr = collectedLines.join(', ').replace(/\s{2,}/g, ' ').trim();
+  if (detectedPin && !finalAddr.includes(detectedPin)) {
+    finalAddr = `${finalAddr} - ${detectedPin}`;
+  }
+
+  const confidence = collectedLines.length >= 2 ? 90 : 70;
+  const source = confidence >= 80 ? 'OCR' : 'OCR_PARTIAL';
 
   return {
-    value: address,
-    confidence: 80,
+    value: finalAddr,
+    confidence,
+    evidenceLines: collectedLines,
+    pinCode: detectedPin,
+    source,
   };
 }
 

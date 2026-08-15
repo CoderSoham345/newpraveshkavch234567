@@ -123,6 +123,7 @@ export interface ExtractedDocData {
   expiryDate?: string;
   nationality?: string;
   documentType: DocumentType;
+  side?: DocumentPageSide;
   rawText?: string;
   confidenceScore: number; // 0 - 100
   lowConfidenceFields: string[];
@@ -187,6 +188,37 @@ export interface ExtractedDocData {
   // Target Audience / Visitor Classification
   targetAudience?: string;
   finalEvaluation?: FinalEvaluationReport;
+
+  // Multi-Page Document Structure (Separated Front and Back Pages)
+  documentPages?: DocumentPageItem[];
+  addressEvidence?: AddressExtractionEvidence;
+}
+
+export interface AddressExtractionEvidence {
+  value: string | null;
+  source: 'OCR' | 'OCR_PARTIAL' | 'MANUAL_ENTRY' | 'OCR_UNCERTAIN';
+  evidenceLines: string[];
+  district?: string;
+  state?: string;
+  pinCode?: string;
+  manuallyEdited?: boolean;
+  confidence: number;
+}
+
+export type DocumentPageSide = 'front' | 'back' | 'single';
+
+export interface DocumentPageItem {
+  side: DocumentPageSide;
+  image: string;
+  croppedImage?: string;
+  rawOcrText?: string;
+  fields?: Record<string, any>;
+  dimensions?: { width: number; height: number };
+  fileSizeKb?: number;
+  mimeType?: string;
+  cropStatus?: 'RAW' | 'CROPPED' | 'ENHANCED';
+  timestamp?: string;
+  ocrStatus?: 'PENDING' | 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'SKIPPED';
 }
 
 export interface FinalEvaluationReport {
