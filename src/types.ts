@@ -150,6 +150,15 @@ export interface ExtractedDocData {
   aadhaarVersion?: string;
   uidaiInfo?: string;
 
+  // Multi-Side OCR streams and original/processed images
+  frontOcrText?: string;
+  backOcrText?: string;
+  combinedOcrText?: string;
+  frontOriginalImage?: string;
+  frontProcessedImage?: string;
+  backOriginalImage?: string;
+  backProcessedImage?: string;
+
   panType?: string;
 
   placeOfBirth?: string;
@@ -208,6 +217,7 @@ export interface AddressExtractionEvidence {
 export type DocumentPageSide = 'front' | 'back' | 'single';
 
 export interface DocumentPageItem {
+  id?: string;
   side: DocumentPageSide;
   image: string;
   croppedImage?: string;

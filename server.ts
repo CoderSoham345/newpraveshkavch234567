@@ -5,7 +5,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { VisitorRecord, VisitorStatus, ExtractedDocData, FaceVerificationData } from './src/types';
 import { detectDocumentType } from './src/utils/documentClassifier';
-import { extractFieldsFromRawText, fixOpticalConfusion, normalizeDate, determinePANType } from './src/utils/ocrPipeline';
+import { extractFieldsFromRawText, fixOpticalConfusion, normalizeDate, determinePANType, extractAddressFromDocument } from './src/utils/ocrPipeline';
 
 // NOTE: Removed INITIAL_* mock data imports - all data now comes from Firebase Firestore
 // See ROOT_CAUSE_ANALYSIS.md for details
@@ -1451,11 +1451,12 @@ Extract ALL visible text from top to bottom into rawText. Do not truncate, omit,
 CRITICAL STAGE 2: DOCUMENT EXTRACTION (SIDE-AWARE)
 ${side === 'back' ? `
 SPECIFIC BACK-SIDE EXTRACTION RULES:
-1. This is the BACK SIDE of an Indian identity document (Aadhaar / DL / Voter ID).
-2. Extract the COMPLETE MULTI-LINE ADDRESS into 'address'. PRESERVE ALL ADDRESS LINES.
+1. This is the BACK / REVERSE SIDE of an Indian identity document (Aadhaar / PAN Card / Driving Licence / Voter ID / Employee ID).
+2. Extract the COMPLETE MULTI-LINE ADDRESS into 'address' IF VISIBLE. PRESERVE ALL ADDRESS LINES.
    - Include Flat/House No, Building, Road, Landmark, Area, Locality, Village, Taluk, City.
    - Include District into 'district', State into 'state', and 6-digit Indian PIN Code into 'pinCode'.
    - DO NOT truncate at first line. Capture the entire continuous address block verbatim.
+   - For PAN Cards: If the back side contains a QR code, taxpayer address, or communication address, extract it accurately. If NO personal address is present, return null or empty string. NEVER GUESS OR HALLUCINATE.
 3. Extract RELATIONSHIP / CARE OF (C/O, S/O, W/O, D/O) into 'fatherName'.
 4. Do not force fullName or documentNumber if not printed on the back side.
 ` : `

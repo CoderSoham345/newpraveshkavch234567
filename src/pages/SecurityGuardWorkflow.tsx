@@ -6,6 +6,7 @@ import { Header } from '../components/Header';
 import { Navigation } from '../components/Navigation';
 import { MobileFrame } from '../components/MobileFrame';
 import { Step1Dashboard } from '../components/Step1Dashboard';
+import { TwoSidedDocumentScanner } from '../components/TwoSidedDocumentScanner';
 import { Step2ScanFront } from '../components/Step2ScanFront';
 import { Step3VerifyFront } from '../components/Step3VerifyFront';
 import { Step4ScanBack } from '../components/Step4ScanBack';
@@ -627,12 +628,20 @@ export function SecurityGuardWorkflow() {
           {activeTab === 'scanner' && (
             <div>
               {currentStep === 2 && (
-                <Step2ScanFront
+                <TwoSidedDocumentScanner
                   selectedDocType={selectedDocType}
                   setSelectedDocType={setSelectedDocType}
-                  aadhaarSettings={aadhaarSettings}
-                  onUpdateAadhaarSettings={setAadhaarSettings}
-                  onCaptureCompleted={handleFrontCaptureCompleted}
+                  frontImage={frontDocImage}
+                  backImage={backDocImage}
+                  extractedData={extractedData}
+                  onComplete={(result) => {
+                    setFrontDocImage(result.frontUrl);
+                    if (result.backUrl) {
+                      setBackDocImage(result.backUrl);
+                    }
+                    setExtractedData(result.extractedData);
+                    setCurrentStep(3);
+                  }}
                   onCancel={() => { setActiveTab('dashboard'); setCurrentStep(1); }}
                 />
               )}

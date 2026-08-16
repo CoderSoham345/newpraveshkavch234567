@@ -374,6 +374,54 @@ export function extractMultiLineAddressWithEvidence(rawText: string): MultiLineA
 }
 
 /**
+ * Dedicated Layout & Document-Aware Address Extraction Function
+ * =============================================================
+ * Handles PAN Card (Back/Address side), Aadhaar, Driving Licence, Voter ID, etc.
+ * Strictly extracts only what is visible in the OCR text.
+ * Never guesses or generates dummy address data.
+ */
+export function extractAddressFromDocument(rawText: string, docType?: DocumentType): MultiLineAddressResult {
+  if (!rawText || !rawText.trim()) {
+    return {
+      address: '',
+      evidenceLines: [],
+      confidence: 0,
+      source: 'OCR_UNCERTAIN',
+    };
+  }
+
+  // Use multi-line layout-aware extraction engine
+  const result = extractMultiLineAddressWithEvidence(rawText);
+
+  // If PAN card specific rules are needed:
+  if (docType === 'PAN_CARD') {
+    // If the text only contains standard NSDL/Income tax disclaimer without user address
+    const isOnlyReturnDisclaimer = (lines: string[]): boolean => {
+      const combined = lines.join(' ').toUpperCase();
+      const hasOnlyOfficeAddress = (
+        (combined.includes('NSDL') || combined.includes('UTIITSL') || combined.includes('INCOME TAX PAN SERVICES UNIT')) &&
+        (combined.includes('IF FOUND') || combined.includes('PLEASE RETURN TO') || combined.includes('MANTRI STERLING')) &&
+        !combined.includes('RESIDENCE') && !combined.includes('C/O') && !combined.includes('FLAT') && !combined.includes('HOUSE')
+      );
+      return hasOnlyOfficeAddress;
+    };
+
+    if (result.evidenceLines.length > 0 && isOnlyReturnDisclaimer(result.evidenceLines)) {
+      // It's just the default NSDL return instruction, not visitor's residential address
+      // Return empty so that guard/resident can enter real address or keep it clean
+      return {
+        address: '',
+        evidenceLines: [],
+        confidence: 0,
+        source: 'OCR_UNCERTAIN',
+      };
+    }
+  }
+
+  return result;
+}
+
+/**
  * Step 4: Multi-Pass OCR Field Extraction Engine
  */
 export function extractFieldsFromRawText(rawText: string, targetDocType: DocumentType): AdvancedOCRResult {
@@ -706,6 +754,27 @@ export function extractFieldsFromRawText(rawText: string, targetDocType: Documen
     if (mrzMatch) {
       data.mrzCode = mrzMatch[0];
       logs.regexMatches['mrz'] = mrzMatch[0];
+    }
+  }
+
+  // Universal Address Extraction with Evidence for ALL document types (PAN Back, DL, Voter, Aadhaar, etc.)
+  if (!data.address) {
+    const addrResult = extractAddressFromDocument(rawText, targetDocType);
+    if (addrResult.address) {
+      data.address = addrResult.address;
+      data.pinCode = addrResult.pinCode || data.pinCode;
+      data.district = addrResult.district || data.district;
+      data.state = addrResult.state || data.state;
+      data.addressEvidence = {
+        value: addrResult.address,
+        source: addrResult.source,
+        evidenceLines: addrResult.evidenceLines,
+        district: addrResult.district,
+        state: addrResult.state,
+        pinCode: addrResult.pinCode,
+        confidence: addrResult.confidence,
+      };
+      logs.regexMatches['address'] = addrResult.address;
     }
   }
 

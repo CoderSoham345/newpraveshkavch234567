@@ -90,6 +90,8 @@ export const DOCUMENT_SCHEMAS: Record<string, DocTypeSchema> = {
       { key: 'fatherName', label: "Father's Name", type: 'text', required: true },
       { key: 'dob', label: 'Date of Birth', type: 'text', required: true },
       { key: 'panType', label: 'PAN Type', type: 'select', options: ['Individual', 'Company', 'Firm', 'HUF', 'Trust'], required: true },
+      { key: 'address', label: 'Address (Back / Document Side)', type: 'textarea', rows: 3, placeholder: 'Enter complete multi-line address' },
+      { key: 'pinCode', label: 'PIN Code', type: 'text', validationRegex: /^\d{6}$/, validationMessage: 'PIN code must be 6 digits' },
     ],
   },
   'PASSPORT': {

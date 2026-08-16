@@ -55,7 +55,7 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
 }) => {
   const [isEditing, setIsEditing] = useState<boolean>(true); // Default to editing mode for direct input!
   const [showRawOcr, setShowRawOcr] = useState<boolean>(false);
-  const [rawOcrTab, setRawOcrTab] = useState<'front' | 'back'>('front');
+  const [rawOcrTab, setRawOcrTab] = useState<'front' | 'back' | 'combined'>('front');
   const [isSaveModalOpen, setIsSaveModalOpen] = useState<boolean>(false);
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState<boolean>(false);
   const [isAadhaarModalOpen, setIsAadhaarModalOpen] = useState<boolean>(false);
@@ -102,16 +102,31 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
     setExtractedData(revalidated);
   };
 
-  const handleRunReOCR = async (targetImg = frontImage) => {
+  const handleRunReOCR = async (side: 'front' | 'back' = 'front') => {
+    const targetImg = side === 'front' ? frontImage : backImage;
+    if (!targetImg) {
+      setReOCRNotice(`⚠ No ${side} image available to re-read.`);
+      return;
+    }
+
     setIsReOCRProcessing(true);
     setReOCRNotice(null);
     try {
       // Mobile-First Image Optimization for Samsung A12
-      const { optimizedBase64 } = await optimizeImageForMobileOCR(targetImg);
+      const { optimizedBase64, originalWidth, originalHeight, mimeType } = await optimizeImageForMobileOCR(targetImg, {
+        side,
+        enhanceContrast: side === 'back',
+        sharpen: true,
+      });
       const readyImg = optimizedBase64 || targetImg;
 
-      const metrics = await logOCRInputDetails(readyImg, extractedData.documentType);
-      setOcrMetrics(metrics);
+      const approxSizeKb = Math.round((readyImg.length * 0.75) / 1024);
+      setOcrMetrics({
+        width: originalWidth || 1920,
+        height: originalHeight || 1080,
+        size: `${approxSizeKb} KB`,
+        type: mimeType || 'image/jpeg',
+      });
 
       const response = await safeFetch('/api/ocr', {
         method: 'POST',
@@ -119,10 +134,11 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
         body: JSON.stringify({
           imageBase64: readyImg,
           docType: extractedData.documentType,
+          side,
         }),
       });
 
-      console.log('OCR RESPONSE:', { received: true, status: response.status, data: response.data });
+      console.log(`[Re-OCR RESPONSE ${side.toUpperCase()}]:`, { received: true, status: response.status, data: response.data });
 
       if (response.ok && response.data?.extractedData) {
         const ocrResult = response.data.extractedData;
@@ -137,24 +153,38 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
           }
         });
 
-        if (ocrResult.rawText) {
-          merged.rawText = ocrResult.rawText;
+        if (side === 'front') {
+          merged.frontOcrText = ocrResult.rawText || ocrResult.frontOcrText || merged.frontOcrText;
+        } else {
+          merged.backOcrText = ocrResult.rawText || ocrResult.backOcrText || merged.backOcrText;
+          if (ocrResult.addressEvidence && !manualMap.address) {
+            merged.addressEvidence = ocrResult.addressEvidence;
+          }
         }
-        
-        merged.confidenceScore = ocrResult.confidenceScore || 0;
+
+        const combinedOcrText = [
+          merged.frontOcrText ? `=== FRONT SIDE OCR ===\n${merged.frontOcrText}` : '',
+          merged.backOcrText ? `=== BACK SIDE OCR ===\n${merged.backOcrText}` : '',
+        ].filter(Boolean).join('\n\n');
+
+        merged.combinedOcrText = combinedOcrText || merged.rawText;
+        merged.rawText = combinedOcrText || ocrResult.rawText || merged.rawText;
+        merged.confidenceScore = ocrResult.confidenceScore || merged.confidenceScore;
         merged.ocrStatus = 'SUCCESS';
         
         const revalidated = validateAndComputeFieldConfidences(merged);
         setExtractedData(revalidated);
-        setReOCRNotice('✓ Document re-read successfully. Un-edited fields updated.');
+        setReOCRNotice(side === 'back' 
+          ? '✓ Back side address re-read successfully. Un-edited fields updated.' 
+          : '✓ Front document re-read successfully. Un-edited fields updated.');
       } else if (response.data?.reason === 'NO_TEXT_DETECTED' || response.data?.error) {
         setReOCRNotice(`⚠ ${response.data.message || 'No readable text detected in image.'}`);
       } else {
-        setReOCRNotice('⚠ Could not automatically read the document image. You can enter details manually.');
+        setReOCRNotice(`⚠ Could not automatically read ${side} image. You can enter details manually.`);
       }
     } catch (err) {
-      console.error('Re-OCR error:', err);
-      setReOCRNotice('⚠ Automatic reading unavailable. You can enter details manually.');
+      console.error(`Re-OCR ${side} error:`, err);
+      setReOCRNotice(`⚠ Automatic reading of ${side} unavailable. You can enter details manually.`);
     } finally {
       setIsReOCRProcessing(false);
     }
@@ -445,6 +475,13 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
                     >
                       Back Side / Address
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setRawOcrTab('combined')}
+                      className={`px-2 py-0.5 rounded text-[9px] font-bold ${rawOcrTab === 'combined' ? 'bg-amber-500/20 text-amber-300' : 'text-slate-400'}`}
+                    >
+                      Combined
+                    </button>
                   </div>
                 </div>
                 <span className="text-emerald-400 font-sans font-bold">STATUS: {extractedData.ocrStatus || 'READY'}</span>
@@ -474,10 +511,12 @@ export const Step3VerifyFront: React.FC<Step3VerifyFrontProps> = ({
                   <span>RAW OCR TEXT ({rawOcrTab.toUpperCase()}):</span>
                   <span className="text-cyan-400 font-mono text-[9px]">RAW OCR STREAM</span>
                 </div>
-                <pre className="whitespace-pre-wrap break-words leading-relaxed max-h-32 overflow-y-auto p-2.5 bg-black rounded border border-amber-500/20 text-amber-200 text-[11px]">
+                <pre className="whitespace-pre-wrap break-words leading-relaxed max-h-36 overflow-y-auto p-2.5 bg-black rounded border border-amber-500/20 text-amber-200 text-[11px]">
                   {rawOcrTab === 'front'
-                    ? (extractedData.rawText || validatedData.rawText || 'No front OCR text stream detected yet.')
-                    : (extractedData.addressEvidence?.evidenceLines?.join('\n') || extractedData.address || 'No back OCR text stream detected yet. Scan back side of card.')
+                    ? (extractedData.rawText?.split('=== BACK SIDE OCR ===')[0]?.replace('=== FRONT SIDE OCR ===', '').trim() || extractedData.rawText || validatedData.rawText || 'No front OCR text stream detected yet.')
+                    : rawOcrTab === 'back'
+                    ? (extractedData.addressEvidence?.evidenceLines?.join('\n') || (extractedData.rawText?.includes('=== BACK SIDE OCR ===') ? extractedData.rawText.split('=== BACK SIDE OCR ===')[1]?.trim() : '') || extractedData.address || 'No back OCR text stream detected yet. Scan back side of card.')
+                    : (extractedData.rawText || validatedData.rawText || 'No combined OCR text available.')
                   }
                 </pre>
               </div>
